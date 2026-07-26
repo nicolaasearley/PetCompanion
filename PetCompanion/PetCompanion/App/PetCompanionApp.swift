@@ -16,6 +16,7 @@ struct PetCompanionApp: App {
                     await model.activateLocalBackendIfReachable()
                     #if DEBUG
                     await IntegrationProbe.runIfRequested(model: model)
+                    await IntegrationProbe.runPlanProbeIfRequested(model: model)
                     #endif
                 }
         }

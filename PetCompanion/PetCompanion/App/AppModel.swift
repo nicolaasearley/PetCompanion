@@ -28,13 +28,11 @@ final class AppModel {
 
     private(set) var auth: any AuthService
     private(set) var households: any HouseholdService
-    // PlanService intentionally stays mock in every backend mode, including
-    // `.local` — the daily-plan generation pipeline (`packages/engine`,
-    // doc 17 WP-3/WP-4) isn't built yet. Home renders the mock §26 fixture
-    // plans (Maple) even when auth/household/pet are talking to the real
-    // local Supabase stack. Do not wire this to a `RealPlanService` until
-    // WP-3/WP-4 land.
-    let plans: any PlanService
+    // `.mock` keeps the in-memory `MockPlanService` (engine §26 fixture
+    // plans). `.local` swaps to `RealPlanService`, backed by the real
+    // `generate-plan` edge function and the write-path command envelope
+    // (doc 17 WP-3/WP-4 landed) — see `activateLocalBackendIfReachable`.
+    private(set) var plans: any PlanService
     /// The `MockBackend` powering `plans`, in every backend mode. Kept so
     /// `.local` mode can register the real household/pet under their real
     /// ids (see `household`/`activePet` didSet below) — without this,
@@ -104,6 +102,7 @@ final class AppModel {
         let realAuth = RealAuthService(client: client)
         auth = realAuth
         households = RealHouseholdService(client: client)
+        plans = RealPlanService(client: client)
         backendMode = .local
 
         // Session restore (US-002): `RealAuthService` seeds `currentUser`

@@ -5,14 +5,20 @@ import Foundation
 /// not a bare string.
 struct StageSnapshot: Codable, Equatable, Sendable {
     var stageKey: String
-    var version: Int
+    /// The engine (`resolveStage`, `supabase/functions/_shared/engine.mjs`)
+    /// emits `null` here when a pet's profile is insufficient to resolve any
+    /// stage (no age, no override, no homecoming date) — optional to tolerate
+    /// that edge rather than crash the whole plan decode; every stage Slice A
+    /// onboarding can actually produce (including `preparing`, seeded as
+    /// `stage.preparing` v1) has a real version.
+    var version: Int?
 
     enum CodingKeys: String, CodingKey {
         case stageKey = "stage_key"
         case version
     }
 
-    init(stageKey: String, version: Int = 1) {
+    init(stageKey: String, version: Int? = 1) {
         self.stageKey = stageKey
         self.version = version
     }
@@ -182,6 +188,101 @@ struct PlanItem: Codable, Identifiable, Equatable, Sendable {
         self.explanationText = explanationText
         self.pinned = pinned
         self.displayState = displayState
+    }
+
+    // MARK: - Codable (permissive real-backend decode)
+    //
+    // Two fields need translation rather than a straight keyed decode
+    // against the real `plan_items` row (`write_path_persist_plan`,
+    // `supabase/migrations/202607260003_generation_lifecycle.sql`):
+    //
+    // - `recommendation_rule_ref` is stored as a jsonb object
+    //   (`{"content_id": ..., "version": ...}`), but this field is the
+    //   display-oriented "content_id@version" string (the same convention
+    //   `MockBackend`'s fixtures already use) — decoded here from either
+    //   shape so a future server-side string wouldn't break either.
+    // - `display_state` on the real row is the persistence lifecycle enum
+    //   (`planned`/`completed`/`skipped`/`rescheduled`/`cancelled`/
+    //   `expired`; `public.plan_item_display_state`), which shares no
+    //   vocabulary with the presentation-only `DisplayState` the mock
+    //   invented (`normal`/`queued`/`stale`). `HomeViewModel.cardState`
+    //   already derives the true "completed" visual from the occurrence +
+    //   disposition before ever consulting `displayState`, so anything
+    //   other than the still-active `planned` state safely maps to
+    //   `.stale` (quieter, non-actionable) here rather than crashing the
+    //   whole plan decode on a lifecycle value the UI has no card for yet.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        planId = try container.decode(UUID.self, forKey: .planId)
+        itemKey = try container.decode(String.self, forKey: .itemKey)
+        kind = try container.decode(PlanItemKind.self, forKey: .kind)
+        occurrenceId = try container.decodeIfPresent(UUID.self, forKey: .occurrenceId)
+        title = try container.decode(String.self, forKey: .title)
+        category = try container.decode(PlanItemCategory.self, forKey: .category)
+        obligationClass = try container.decode(ObligationClass.self, forKey: .obligationClass)
+        priorityTier = try container.decode(PriorityTier.self, forKey: .priorityTier)
+        section = try container.decode(PlanSection.self, forKey: .section)
+        explanationText = try container.decodeIfPresent(String.self, forKey: .explanationText)
+        pinned = try container.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+
+        // effort_band / time_window: text columns whose check constraints
+        // are a superset of what the domain enums model (e.g. `sleep` is a
+        // valid `time_window` for routine windows, not for plan items, but
+        // there's no reason to hard-crash a whole plan fetch over one
+        // unrecognized value) — decode permissively, dropping to nil.
+        effortBand = (try? container.decodeIfPresent(String.self, forKey: .effortBand))
+            .flatMap { $0 }
+            .flatMap(EffortBand.init(rawValue:))
+        timeWindow = (try? container.decodeIfPresent(String.self, forKey: .timeWindow))
+            .flatMap { $0 }
+            .flatMap(PlanTimeWindow.init(rawValue:))
+
+        if let ref = try? container.decodeIfPresent(RecommendationRuleRefDTO.self, forKey: .recommendationRuleRef) {
+            recommendationRuleRef = "\(ref.contentId)@\(ref.version)"
+        } else {
+            recommendationRuleRef = try? container.decodeIfPresent(String.self, forKey: .recommendationRuleRef)
+        }
+
+        let rawDisplayState = try container.decodeIfPresent(String.self, forKey: .displayState) ?? "normal"
+        switch rawDisplayState {
+        case "normal", "planned": displayState = .normal
+        case "queued": displayState = .queued
+        default: displayState = .stale
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(planId, forKey: .planId)
+        try container.encode(itemKey, forKey: .itemKey)
+        try container.encode(kind, forKey: .kind)
+        try container.encodeIfPresent(occurrenceId, forKey: .occurrenceId)
+        try container.encodeIfPresent(recommendationRuleRef, forKey: .recommendationRuleRef)
+        try container.encode(title, forKey: .title)
+        try container.encode(category, forKey: .category)
+        try container.encode(obligationClass, forKey: .obligationClass)
+        try container.encode(priorityTier, forKey: .priorityTier)
+        try container.encode(section, forKey: .section)
+        try container.encodeIfPresent(timeWindow, forKey: .timeWindow)
+        try container.encodeIfPresent(effortBand, forKey: .effortBand)
+        try container.encodeIfPresent(explanationText, forKey: .explanationText)
+        try container.encode(pinned, forKey: .pinned)
+        try container.encode(displayState, forKey: .displayState)
+    }
+}
+
+/// Decode-only shape for the real `plan_items.recommendation_rule_ref`
+/// jsonb column — never constructed by the app, only matched against on
+/// the way in (see `PlanItem.init(from:)` above).
+private struct RecommendationRuleRefDTO: Decodable {
+    let contentId: String
+    let version: Int
+
+    enum CodingKeys: String, CodingKey {
+        case contentId = "content_id"
+        case version
     }
 }
 

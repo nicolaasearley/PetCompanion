@@ -41,12 +41,19 @@ enum PlanServiceError: LocalizedError {
     case notSignedIn
     case planNotFound
     case itemNotFound
+    /// A recommendation item was acted on before it has an `occurrence_id`
+    /// — i.e. before it's been accepted. Slice A has no accept/promote
+    /// write-path command yet (that's engine/WP-4 server work), so this is
+    /// surfaced as a plain, non-crashing error instead of a fabricated
+    /// promotion flow (`RealPlanService`).
+    case recommendationNotYetActionable
 
     var errorDescription: String? {
         switch self {
         case .notSignedIn: "Sign in to continue."
         case .planNotFound: "That plan couldn't be loaded. Pull to refresh."
         case .itemNotFound: "That item couldn't be found. Pull to refresh."
+        case .recommendationNotYetActionable: "Accepting recommendations isn't available yet. Try again soon."
         }
     }
 }

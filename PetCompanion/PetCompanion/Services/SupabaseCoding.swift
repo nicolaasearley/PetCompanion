@@ -24,6 +24,22 @@ enum SupabaseCoding {
         return formatter
     }()
 
+    /// `task_occurrences.due_time` / `plan_items.due_time` are SQL `time`
+    /// columns (no date, no zone) — PostgREST serializes them as a bare
+    /// `HH:mm:ss` string. Parsed onto today's date purely so it round-trips
+    /// through `Date`; every call site that reads it back
+    /// (`HomeViewModel.meta`) only ever formats the time-of-day component
+    /// (`.formatted(date: .omitted, time: .shortened)`), so the arbitrary
+    /// date component is never shown.
+    private nonisolated static let timeOnlyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
+
     // `nonisolated(unsafe)`: `ISO8601DateFormatter` predates `Sendable` and
     // isn't annotated, but these instances are configured once here and
     // only ever used for read-only `.string(from:)`/`.date(from:)` calls
@@ -52,6 +68,9 @@ enum SupabaseCoding {
                 return date
             }
             if let date = dateOnlyFormatter.date(from: string) {
+                return date
+            }
+            if let date = timeOnlyFormatter.date(from: string) {
                 return date
             }
             throw DecodingError.dataCorruptedError(

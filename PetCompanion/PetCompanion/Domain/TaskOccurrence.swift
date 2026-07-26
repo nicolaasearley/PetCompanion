@@ -132,7 +132,14 @@ struct TaskOccurrence: Codable, Identifiable, Equatable, Sendable {
         originalLocalDueDate = try container.decode(Date.self, forKey: .originalLocalDueDate)
         timePolicy = try container.decode(TimePolicy.self, forKey: .timePolicy)
         dueTime = try container.decodeIfPresent(Date.self, forKey: .dueTime)
-        window = try container.decodeIfPresent(PlanTimeWindow.self, forKey: .window)
+        // `window_ref`'s check constraint on `task_occurrences` allows
+        // `sleep` (routine bedtime windows) alongside the four the domain
+        // `PlanTimeWindow` models for plan display — decode permissively
+        // rather than throw on a value this occurrence's own UI treatment
+        // was never going to render as a window group anyway.
+        window = (try? container.decodeIfPresent(String.self, forKey: .window))
+            .flatMap { $0 }
+            .flatMap(PlanTimeWindow.init(rawValue:))
         state = try container.decode(State.self, forKey: .state)
         obligationClass = try container.decode(ObligationClass.self, forKey: .obligationClass)
         origin = try container.decode(TaskOrigin.self, forKey: .origin)

@@ -600,7 +600,9 @@ recommendation set changes only through user-initiated replace/pin actions.
 the same logical item, so user context survives `plan_version` bumps), `kind`
 (`obligation | recommendation | informational | upcoming_preview`),
 `occurrence_id?` (obligations), `recommendation_rule_ref?` (rule id +
-version, recommendations), `category`, `obligation_class`, `priority_tier`
+version, recommendations), `title` (display text rendered at generation,
+per engine §28.1 — stored, not re-resolved from content), `category`,
+`obligation_class`, `priority_tier`
 (engine §12.1), `section` (`needs_attention | today | recommended |
 coming_up | completed`), `time_window?`, `effort_band?`,
 `explanation_text` (rendered at generation from the rule's template — stored,

@@ -73,7 +73,8 @@ Same token names; values: `bg #17140F`, `surface #201C15`,
 `surface-subtle #2A251C`, `ink #F3EFE7`, `ink-secondary #BFB7A8`,
 `border #3A342A`, `primary #7FB5A4`, `on-primary #17140F`,
 `attention #E08A6D`, `attention-bg #3A251D`, `success #8CC0A6`,
-`info #93AEC7`, `danger #E0796A`, `accent #D9A85C`. Dark mode ships with the
+`info #93AEC7`, `danger #E0796A`, `accent #D9A85C`, `ink-tertiary #8A8172`
+(shared with light), `primary-pressed #6BA292`. Dark mode ships with the
 MVP (platform-following, no in-app override initially).
 
 ### 4.3 Color rules

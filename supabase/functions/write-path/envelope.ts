@@ -1,3 +1,6 @@
+// VENDORED from packages/write-path/src/envelope.ts - the edge runtime only
+// mounts supabase/functions, so shared sources must be vendored here. Keep in
+// sync with the canonical copy.
 export type SliceACommand =
   | "create_household"
   | "create_pet"

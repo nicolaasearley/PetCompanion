@@ -2,10 +2,15 @@ import type {
   CommandEnvelope,
   CommandFailure,
   CommandSuccess,
+  CompleteOccurrencePayload,
   CreateHouseholdPayload,
   CreatePetPayload,
+  CreateTaskPayload,
+  SetRoutinePreferencesPayload,
+  SkipItemPayload,
   SliceACommand,
-} from "../../../packages/write-path/src/envelope";
+  UndoCompletionPayload,
+} from "./envelope.ts";
 
 declare const Deno: {
   env: {
@@ -23,9 +28,6 @@ interface AuthUser {
 const implementedCommands: ReadonlySet<SliceACommand> = new Set([
   "create_household",
   "create_pet",
-]);
-
-const stubbedCommands: ReadonlySet<SliceACommand> = new Set([
   "set_routine_preferences",
   "create_task",
   "complete_occurrence",
@@ -66,12 +68,6 @@ Deno.serve(async (request) => {
     return jsonResponse(body, replay.status === "succeeded" ? 200 : statusForError(replay.error_code));
   }
 
-  if (stubbedCommands.has(envelope.command)) {
-    const body = failure("NOT_IMPLEMENTED", `${envelope.command} is stubbed for Slice A WP-1.`, envelope.command);
-    await recordCommandFailure(user.id, envelope, payloadHash, body.code);
-    return jsonResponse(body, 501);
-  }
-
   if (!implementedCommands.has(envelope.command)) {
     return jsonResponse(failure("UNKNOWN_COMMAND", "Unsupported command.", envelope.command), 400);
   }
@@ -91,9 +87,23 @@ Deno.serve(async (request) => {
       return jsonResponse(success(envelope.command, result, false), 200);
     }
 
-    assertCreatePetPayload(envelope.payload);
-    await assertActiveMembership(user.id, envelope.payload.household_id);
-    const result = await rpc("write_path_create_pet", {
+    if (envelope.command === "create_pet") {
+      assertCreatePetPayload(envelope.payload);
+      await assertActiveMembership(user.id, envelope.payload.household_id);
+    } else if (envelope.command === "set_routine_preferences") {
+      assertSetRoutinePreferencesPayload(envelope.payload);
+      await assertActiveMembership(user.id, envelope.payload.household_id);
+    } else if (envelope.command === "create_task") {
+      assertCreateTaskPayload(envelope.payload);
+    } else if (envelope.command === "complete_occurrence") {
+      assertCompleteOccurrencePayload(envelope.payload);
+    } else if (envelope.command === "undo_completion") {
+      assertUndoCompletionPayload(envelope.payload);
+    } else {
+      assertSkipItemPayload(envelope.payload);
+    }
+
+    const result = await rpc(`write_path_${envelope.command}`, {
       actor_id: user.id,
       idempotency_key: envelope.client_idempotency_key,
       payload_hash_input: payloadHash,
@@ -163,6 +173,82 @@ function assertCreatePetPayload(value: unknown): asserts value is CreatePetPaylo
   }
   if (typeof value.birth_date === "string" && typeof value.homecoming_date === "string" && value.homecoming_date < value.birth_date) {
     throw new Error("homecoming_date must be on or after birth_date.");
+  }
+}
+
+function assertSetRoutinePreferencesPayload(value: unknown): asserts value is SetRoutinePreferencesPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.household_id, "payload.household_id");
+  if (!isRecord(value.routine_windows)) throw new Error("payload.routine_windows must be an object.");
+  if (value.meal_template_ref !== undefined && value.meal_template_ref !== null && typeof value.meal_template_ref !== "string") {
+    throw new Error("payload.meal_template_ref must be a string or null.");
+  }
+}
+
+function assertCreateTaskPayload(value: unknown): asserts value is CreateTaskPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.pet_id, "payload.pet_id");
+  assertNonEmptyString(value.title, "payload.title");
+  assertLocalDate(value.local_due_date, "payload.local_due_date");
+
+  if (!["anytime", "window", "exact_time"].includes(String(value.time_policy))) {
+    throw new Error("payload.time_policy must be anytime, window, or exact_time.");
+  }
+  if (typeof value.assignment !== "string" || !/^(unassigned|anyone|member:[0-9a-fA-F-]{36})$/.test(value.assignment)) {
+    throw new Error("payload.assignment must be unassigned, anyone, or member:<user_uuid>.");
+  }
+
+  if (value.time_policy === "exact_time") {
+    if (typeof value.exact_time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.exact_time)) {
+      throw new Error("payload.exact_time must be HH:MM for exact_time.");
+    }
+    if (value.window_ref !== undefined) throw new Error("payload.window_ref is not allowed for exact_time.");
+  } else if (value.time_policy === "window") {
+    if (!["morning", "midday", "afternoon", "evening", "sleep"].includes(String(value.window_ref))) {
+      throw new Error("payload.window_ref is required and invalid for window.");
+    }
+    if (value.exact_time !== undefined) throw new Error("payload.exact_time is not allowed for window.");
+  } else if (value.exact_time !== undefined || value.window_ref !== undefined) {
+    throw new Error("anytime does not accept payload.exact_time or payload.window_ref.");
+  }
+
+  for (const field of ["task_definition_id", "schedule_id", "occurrence_id"] as const) {
+    if (value[field] !== undefined) assertNonEmptyString(value[field], `payload.${field}`);
+  }
+}
+
+function assertCompleteOccurrencePayload(value: unknown): asserts value is CompleteOccurrencePayload {
+  assertOccurrenceActionPayload(value);
+}
+
+function assertUndoCompletionPayload(value: unknown): asserts value is UndoCompletionPayload {
+  assertOccurrenceActionPayload(value);
+}
+
+function assertSkipItemPayload(value: unknown): asserts value is SkipItemPayload {
+  assertOccurrenceActionPayload(value);
+  const reasons = ["not_relevant_today", "already_did_this", "too_busy", "pet_not_feeling_well", "do_not_suggest_for_now"];
+  if (value.skip_reason !== undefined && !reasons.includes(String(value.skip_reason))) {
+    throw new Error("payload.skip_reason is invalid.");
+  }
+  if (value.confirm_required !== undefined && typeof value.confirm_required !== "boolean") {
+    throw new Error("payload.confirm_required must be boolean.");
+  }
+}
+
+function assertOccurrenceActionPayload(value: unknown): asserts value is Record<string, unknown> & CompleteOccurrencePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.occurrence_id, "payload.occurrence_id");
+  if (value.note !== undefined && typeof value.note !== "string") throw new Error("payload.note must be a string.");
+}
+
+function assertNonEmptyString(value: unknown, field: string): asserts value is string {
+  if (typeof value !== "string" || value.trim() === "") throw new Error(`${field} is required.`);
+}
+
+function assertLocalDate(value: unknown, field: string): asserts value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+    throw new Error(`${field} must be YYYY-MM-DD.`);
   }
 }
 
@@ -336,6 +422,7 @@ function codeOf(error: unknown): string {
   if (isRecord(error) && typeof error.code === "string") {
     if (error.code === "42501") return "FORBIDDEN";
     if (error.code === "23505") return "IDEMPOTENCY_CONFLICT";
+    if (error.code === "PC001") return "REQUIRED_CONFIRMATION";
     if (error.code === "22023" || error.code === "23514" || error.code === "22P02") return "VALIDATION_FAILED";
     return error.code;
   }
@@ -353,10 +440,9 @@ function statusForError(code: string | null | undefined): number {
     case "IDEMPOTENCY_CONFLICT":
       return 409;
     case "VALIDATION_FAILED":
+    case "REQUIRED_CONFIRMATION":
     case "BAD_REQUEST":
       return 400;
-    case "NOT_IMPLEMENTED":
-      return 501;
     default:
       return 500;
   }

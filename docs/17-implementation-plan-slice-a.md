@@ -181,6 +181,25 @@ and post-arrival variants) → server-generated plan renders from a device.
 | Optimistic UI divergence | Cache is only ever written from server echoes + queued-op overlay; never a third path |
 | SDK version drift (supabase-swift, supabase CLI) | Pin versions in WP-0; upgrade as an explicit task |
 
+## 6a. Known follow-ups from walking-skeleton verification (2026-07-26)
+
+1. **Recommendation churn across regenerations.** Every app open regenerates
+   the day's plan, and the selected recommendation set can change between
+   regenerations (observed: three catalogue items on one generation, three
+   different ones after later regenerations). Item keys stay stable and no
+   duplicates are created, but this contradicts engine §4.3 ("stable unless
+   something meaningful changes"). Plan freezing (§10.3) only engages after the
+   first meaningful interaction, so this is legal but undesirable. Fix in WP-5:
+   persist the selected recommendation set and reuse it for the local day
+   unless inputs materially change or the user explicitly refreshes.
+2. **Recommendation acceptance is not exposed.** Recommendations arrive with
+   no occurrence, and no command promotes them (Data Model §10.3). The client
+   surfaces a typed not-yet-actionable error. Needs a `accept_recommendation`
+   write-path command before Home's complete action is meaningful for
+   recommendations.
+3. **Day-close scheduling.** `close_plans_for_date` exists but nothing invokes
+   it automatically; pg_cron wiring is deferred.
+
 ## 7. Open questions
 
 1. ~~Confirm caregiver device platforms.~~ **Resolved 2026-07-26:** iOS

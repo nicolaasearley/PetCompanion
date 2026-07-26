@@ -1,7 +1,8 @@
 # PetCompanion Supabase Backend
 
 This directory contains the Slice A backend foundation: local Supabase config,
-schema migrations, content seed data, and the `write-path` Edge Function.
+schema migrations, content seed data, and the `write-path` / `generate-plan`
+Edge Functions.
 
 ## Prerequisites
 
@@ -40,6 +41,24 @@ Serve the write path locally:
 supabase functions serve write-path --env-file supabase/.env.local
 ```
 
+Build the dependency-free engine bundle and serve plan generation:
+
+```sh
+cd packages/engine
+npm run bundle:edge
+cd ../..
+supabase functions serve generate-plan --env-file supabase/.env.local
+```
+
+Authenticated generation request:
+
+```sh
+curl -X POST http://127.0.0.1:54321/functions/v1/generate-plan \
+  -H "Authorization: Bearer <user-access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"pet_id":"<pet-uuid>","force":false}'
+```
+
 The function expects:
 
 ```sh
@@ -62,35 +81,48 @@ Request envelope:
 }
 ```
 
-Implemented commands:
+Implemented write-path commands:
 
 - `create_household`
 - `create_pet`
-
-Stubbed commands return `NOT_IMPLEMENTED` through the real auth and
-idempotency plumbing:
-
 - `set_routine_preferences`
 - `create_task`
 - `complete_occurrence`
 - `undo_completion`
 - `skip_item`
 
+## Manual day close
+
+WP-4 intentionally leaves scheduling/`pg_cron` wiring out of scope. Invoke
+day close with the service role after a household-local day ends:
+
+```sh
+curl -X POST "$SUPABASE_URL/rest/v1/rpc/close_plans_for_date" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"target_date":"2026-07-26"}'
+```
+
+This expires still-planned recommendations and then closes every open plan for
+the supplied local date. Required occurrences are not auto-dismissed, and
+needs-attention remains a presentation-side derivation.
+
 ## Checks
 
-When Docker and the Supabase CLI are available:
+When Docker and the Supabase CLI are available, apply migrations through the
+normal deployment workflow. The repository test workflow is:
 
 ```sh
-supabase db reset
-supabase functions serve write-path --env-file supabase/.env.local
+export PATH="$HOME/.local/bin:$PATH"
+bash supabase/tests/run.sh
 ```
 
-Typecheck the shared command types and Edge Function:
+Verify the pure engine and regenerate the function-local bundle:
 
 ```sh
-cd packages/write-path
-npx tsc --noEmit
+cd packages/engine
+npm run typecheck
+npm test
+npm run bundle:edge
 ```
-
-This environment did not have Docker, `supabase`, `psql`, or `deno`
-installed, so database execution checks could not be run here.

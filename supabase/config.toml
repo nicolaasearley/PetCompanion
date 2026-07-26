@@ -34,3 +34,6 @@ enable_signup = true
 
 [functions.write-path]
 verify_jwt = true
+
+[functions.generate-plan]
+verify_jwt = true

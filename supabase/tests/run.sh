@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # WP-1 exit test runner: RLS isolation + invariant enforcement.
 #
-# Runs supabase/tests/rls_isolation.sql, supabase/tests/invariants.sql, and
-# supabase/tests/commands.sql
+# Runs every Slice A SQL suite, including WP-4 generation lifecycle coverage,
 # against the running local Supabase Postgres container, printing a
 # PASS/FAIL line per assertion (emitted by the .sql files themselves via
 # RAISE NOTICE) plus a final summary, and exits non-zero if any suite failed.
@@ -59,13 +58,18 @@ run_suite "${SCRIPT_DIR}/commands.sql" "Slice A commands suite"
 commands_status=$?
 [[ ${commands_status} -ne 0 ]] && overall_status=1
 
+run_suite "${SCRIPT_DIR}/generation.sql" "Generation lifecycle suite"
+generation_status=$?
+[[ ${generation_status} -ne 0 ]] && overall_status=1
+
 echo ""
 echo "=================================================================="
-echo "WP-1 EXIT TEST SUMMARY"
+echo "SLICE A DATABASE TEST SUMMARY"
 echo "=================================================================="
 printf '  %-24s %s\n' "RLS isolation suite:" "$([[ ${rls_status} -eq 0 ]] && echo PASS || echo FAIL)"
 printf '  %-24s %s\n' "Invariants suite:" "$([[ ${invariants_status} -eq 0 ]] && echo PASS || echo FAIL)"
 printf '  %-24s %s\n' "Slice A commands suite:" "$([[ ${commands_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Generation lifecycle:" "$([[ ${generation_status} -eq 0 ]] && echo PASS || echo FAIL)"
 echo "=================================================================="
 
 if [[ ${overall_status} -eq 0 ]]; then

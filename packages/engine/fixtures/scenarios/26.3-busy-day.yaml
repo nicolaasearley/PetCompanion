@@ -1,0 +1,39 @@
+{
+  "scenario": "26.3 busy household day",
+  "local_date": "2026-08-07",
+  "capacity": "busy",
+  "household": {
+    "excluded_content_ids": ["care.brushing"],
+    "excluded_socialization_categories": ["Environments", "People", "Sounds", "Surfaces"]
+  },
+  "obligations": [
+    {
+      "key": "medication",
+      "title": "Medication",
+      "category": "health",
+      "obligation_class": "required",
+      "origin": "health_schedule",
+      "due_time": "08:00"
+    },
+    {
+      "key": "class",
+      "title": "Puppy class",
+      "category": "training",
+      "obligation_class": "scheduled",
+      "origin": "calendar_event",
+      "due_time": "18:30"
+    }
+  ],
+  "training_state": [
+    { "skill_content_id": "skill.marker_intro", "status": "completed" },
+    { "skill_content_id": "skill.paw_handling", "status": "paused" }
+  ],
+  "expect": {
+    "recommendation_budget": 1,
+    "recommended_count": 1,
+    "recommended_content_ids": ["skill.name_response"],
+    "required_titles": ["Medication", "Puppy class"],
+    "no_duplicates": true,
+    "explanations": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "scenario": "capacity variant normal permits three",
+  "local_date": "2026-08-10",
+  "capacity": "normal",
+  "training_state": [
+    { "skill_content_id": "skill.marker_intro", "status": "completed" },
+    { "skill_content_id": "skill.paw_handling", "status": "paused" }
+  ],
+  "expect": {
+    "recommendation_budget": 3,
+    "recommended_count": 3,
+    "recommended_count_max": 3,
+    "no_duplicates": true,
+    "explanations": true
+  }
+}

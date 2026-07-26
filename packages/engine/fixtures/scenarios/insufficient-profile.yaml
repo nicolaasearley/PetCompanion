@@ -1,0 +1,22 @@
+{
+  "scenario": "unknown birth disables age-dependent suggestions but keeps obligations",
+  "local_date": "2026-08-14",
+  "capacity": "normal",
+  "pet": {
+    "birth_info": { "kind": "unknown" }
+  },
+  "obligations": [
+    {
+      "key": "owner-task",
+      "title": "Refresh water bowl",
+      "category": "feeding",
+      "obligation_class": "scheduled"
+    }
+  ],
+  "expect": {
+    "recommended_count": 0,
+    "required_titles": ["Refresh water bowl"],
+    "sufficient_profile": false,
+    "no_duplicates": true
+  }
+}

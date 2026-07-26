@@ -1,0 +1,39 @@
+{
+  "scenario": "26.4 essentials-only day",
+  "local_date": "2026-08-08",
+  "capacity": "essentials_only",
+  "obligations": [
+    {
+      "key": "care",
+      "title": "User-entered care task",
+      "category": "health",
+      "obligation_class": "required"
+    },
+    {
+      "key": "medication",
+      "title": "Scheduled medication",
+      "category": "health",
+      "obligation_class": "required",
+      "origin": "health_schedule",
+      "due_time": "08:00"
+    },
+    {
+      "key": "vet-call",
+      "title": "Confirmed veterinary call",
+      "category": "event",
+      "obligation_class": "scheduled",
+      "origin": "calendar_event",
+      "due_time": "10:00"
+    }
+  ],
+  "expect": {
+    "recommendation_budget": 0,
+    "recommended_count": 0,
+    "required_titles": [
+      "User-entered care task",
+      "Scheduled medication",
+      "Confirmed veterinary call"
+    ],
+    "no_duplicates": true
+  }
+}

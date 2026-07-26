@@ -1,0 +1,20 @@
+{
+  "scenario": "scheduled brushing suppresses equivalent recommendation",
+  "local_date": "2026-08-11",
+  "capacity": "normal",
+  "obligations": [
+    {
+      "key": "brush",
+      "title": "Brief brushing session",
+      "content_id": "care.brushing",
+      "category": "grooming",
+      "obligation_class": "scheduled"
+    }
+  ],
+  "expect": {
+    "recommended_count_max": 3,
+    "required_titles": ["Brief brushing session"],
+    "no_duplicates": true,
+    "explanations": true
+  }
+}

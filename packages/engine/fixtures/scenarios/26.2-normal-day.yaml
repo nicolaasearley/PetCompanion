@@ -1,0 +1,86 @@
+{
+  "scenario": "26.2 normal day with a ten-week-old puppy",
+  "local_date": "2026-08-06",
+  "capacity": "normal",
+  "obligations": [
+    {
+      "key": "breakfast",
+      "title": "Breakfast",
+      "category": "feeding",
+      "obligation_class": "scheduled",
+      "window_ref": "morning",
+      "state": "completed",
+      "completed_by": "Sarah"
+    },
+    {
+      "key": "potty-am",
+      "title": "Morning potty routine",
+      "category": "routine",
+      "obligation_class": "scheduled",
+      "window_ref": "morning"
+    },
+    {
+      "key": "dinner",
+      "title": "Evening meal",
+      "category": "feeding",
+      "obligation_class": "scheduled",
+      "window_ref": "evening"
+    },
+    {
+      "key": "records",
+      "title": "Bring existing health records",
+      "category": "preparation",
+      "obligation_class": "scheduled",
+      "due_date": "2026-08-08"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "vet",
+      "title": "Veterinary appointment",
+      "kind": "vet_appointment",
+      "local_date": "2026-08-09",
+      "exact_time": "14:00",
+      "confirmed": true
+    }
+  ],
+  "training_state": [
+    { "skill_content_id": "skill.marker_intro", "status": "completed" },
+    { "skill_content_id": "skill.recall_foundations", "status": "active", "user_selected_goal": true }
+  ],
+  "recent_history": [
+    { "local_date": "2026-08-05", "content_id": "skill.paw_handling", "rule_content_id": "rule.handling_cadence", "category": "training", "outcome": "completed" },
+    { "local_date": "2026-08-03", "content_id": "care.brushing", "rule_content_id": "rule.brushing", "category": "grooming", "outcome": "completed" },
+    { "local_date": "2026-08-05", "socialization_category": "People", "category": "socialization", "outcome": "completed" },
+    { "local_date": "2026-08-04", "socialization_category": "Sounds", "category": "socialization", "outcome": "completed" },
+    { "local_date": "2026-08-03", "socialization_category": "Surfaces", "category": "socialization", "outcome": "completed" }
+  ],
+  "expect": {
+    "recommendation_budget": 3,
+    "recommended_count": 3,
+    "recommended_content_ids": [
+      "skill.name_response",
+      "soc.environments.front_garden",
+      "care.brushing"
+    ],
+    "absent_content_ids": ["skill.paw_handling"],
+    "sections": {
+      "completed": ["Breakfast"],
+      "coming_up": ["Veterinary appointment", "Bring existing health records"]
+    },
+    "no_duplicates": true,
+    "explanations": true,
+    "catalogue_refs": [
+      "rule.handling_cadence@1",
+      "skill.paw_handling@1",
+      "care.brushing@1"
+    ],
+    "suppressed": [
+      {
+        "candidate_key": "rule.handling_cadence:skill.paw_handling",
+        "reason": "cooldown"
+      }
+    ],
+    "obligations_before_recommendations": true
+  }
+}

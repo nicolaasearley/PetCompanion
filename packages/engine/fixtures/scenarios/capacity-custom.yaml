@@ -1,0 +1,16 @@
+{
+  "scenario": "capacity variant custom uses caller budget",
+  "local_date": "2026-08-10",
+  "capacity": "custom",
+  "custom_recommendation_budget": 2,
+  "training_state": [
+    { "skill_content_id": "skill.marker_intro", "status": "completed" },
+    { "skill_content_id": "skill.paw_handling", "status": "paused" }
+  ],
+  "expect": {
+    "recommendation_budget": 2,
+    "recommended_count": 2,
+    "no_duplicates": true,
+    "explanations": true
+  }
+}

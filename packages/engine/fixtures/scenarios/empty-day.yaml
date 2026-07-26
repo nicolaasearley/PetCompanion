@@ -1,0 +1,23 @@
+{
+  "scenario": "empty day remains usable and expired recommendations do not backlog",
+  "local_date": "2026-08-13",
+  "capacity": "normal",
+  "pet": {
+    "birth_info": { "kind": "unknown" }
+  },
+  "recent_history": [
+    {
+      "local_date": "2026-08-12",
+      "content_id": "skill.name_response",
+      "rule_content_id": "rule.start_next_skill",
+      "category": "training",
+      "outcome": "expired"
+    }
+  ],
+  "expect": {
+    "recommended_count": 0,
+    "sufficient_profile": false,
+    "empty": true,
+    "no_duplicates": true
+  }
+}

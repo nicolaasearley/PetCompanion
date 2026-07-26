@@ -1,0 +1,62 @@
+{
+  "scenario": "26.1 pre-arrival plan, homecoming in ten days",
+  "local_date": "2026-08-01",
+  "capacity": "normal",
+  "pet": {
+    "birth_info": { "kind": "unknown" },
+    "expected_homecoming_date": "2026-08-11"
+  },
+  "obligations": [
+    {
+      "key": "vet-confirm",
+      "title": "Confirm first veterinary appointment",
+      "content_id": "prep.first_vet_appt",
+      "category": "preparation",
+      "obligation_class": "scheduled"
+    },
+    {
+      "key": "cords",
+      "title": "Finish securing electrical cords",
+      "content_id": "prep.safe_home",
+      "category": "preparation",
+      "obligation_class": "scheduled"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "homecoming",
+      "title": "Puppy homecoming",
+      "kind": "homecoming",
+      "local_date": "2026-08-11",
+      "confirmed": true
+    },
+    {
+      "event_id": "first-vet",
+      "title": "First veterinary appointment",
+      "kind": "vet_appointment",
+      "local_date": "2026-08-14",
+      "confirmed": true
+    }
+  ],
+  "recent_history": [
+    { "local_date": "2026-07-31", "content_id": "prep.supplies", "category": "preparation", "outcome": "completed" },
+    { "local_date": "2026-07-31", "content_id": "prep.vet_choice", "category": "preparation", "outcome": "completed" },
+    { "local_date": "2026-07-31", "content_id": "prep.name_shortlist", "category": "preparation", "outcome": "completed" }
+  ],
+  "expect": {
+    "recommended_count_max": 3,
+    "required_titles": [
+      "Confirm first veterinary appointment",
+      "Finish securing electrical cords"
+    ],
+    "recommended_content_ids": ["prep.sleep_setup"],
+    "absent_content_ids": ["care.brushing"],
+    "sections": {
+      "coming_up": ["Puppy homecoming", "First veterinary appointment"]
+    },
+    "no_duplicates": true,
+    "explanations": true,
+    "obligations_before_recommendations": true,
+    "sufficient_profile": true
+  }
+}

@@ -1,5 +1,23 @@
 import Foundation
 
+/// Stage key + definition version used at generation (F07, doc 10 §10.1).
+/// The SQL column is a jsonb object (`{"stage_key": ..., "version": ...}`),
+/// not a bare string.
+struct StageSnapshot: Codable, Equatable, Sendable {
+    var stageKey: String
+    var version: Int
+
+    enum CodingKeys: String, CodingKey {
+        case stageKey = "stage_key"
+        case version
+    }
+
+    init(stageKey: String, version: Int = 1) {
+        self.stageKey = stageKey
+        self.version = version
+    }
+}
+
 /// The single shared plan for one pet on one local day — Data Model doc 10
 /// §10.1. Unique per (pet, local date); regeneration mutates, never clones.
 struct Plan: Codable, Identifiable, Equatable, Sendable {
@@ -10,8 +28,8 @@ struct Plan: Codable, Identifiable, Equatable, Sendable {
     var localDate: Date
     /// Historical plans stay interpretable after a time-zone change.
     var timeZoneSnapshot: String
-    /// Stage key used at generation (F07).
-    var stageSnapshot: String
+    /// Stage key + definition version used at generation (F07).
+    var stageSnapshot: StageSnapshot
     var capacityModeApplied: CapacityMode
     /// Incremented on each meaningful regeneration (engine §10.2).
     var planVersion: Int
@@ -40,7 +58,7 @@ struct Plan: Codable, Identifiable, Equatable, Sendable {
         petId: UUID,
         localDate: Date,
         timeZoneSnapshot: String,
-        stageSnapshot: String,
+        stageSnapshot: StageSnapshot,
         capacityModeApplied: CapacityMode = .normal,
         planVersion: Int = 1,
         status: Status = .open,
@@ -56,6 +74,28 @@ struct Plan: Codable, Identifiable, Equatable, Sendable {
         self.planVersion = planVersion
         self.status = status
         self.generatedAt = generatedAt
+    }
+}
+
+/// Ordering hint, internal only, never displayed as a score — engine §12.1.
+/// Raw values match the SQL enum `public.priority_tier` ('P0'..'P5'); lower
+/// tiers sort first.
+enum PriorityTier: String, Codable, CaseIterable, Sendable {
+    case p0 = "P0"
+    case p1 = "P1"
+    case p2 = "P2"
+    case p3 = "P3"
+    case p4 = "P4"
+    case p5 = "P5"
+
+    private var rank: Int {
+        PriorityTier.allCases.firstIndex(of: self) ?? 0
+    }
+}
+
+extension PriorityTier: Comparable {
+    static func < (lhs: PriorityTier, rhs: PriorityTier) -> Bool {
+        lhs.rank < rhs.rank
     }
 }
 
@@ -80,7 +120,7 @@ struct PlanItem: Codable, Identifiable, Equatable, Sendable {
     var category: PlanItemCategory
     var obligationClass: ObligationClass
     /// Engine §12.1; internal ordering hint, never displayed as a score.
-    var priorityTier: Int
+    var priorityTier: PriorityTier
     var section: PlanSection
     var timeWindow: PlanTimeWindow?
     var effortBand: EffortBand?
@@ -118,7 +158,7 @@ struct PlanItem: Codable, Identifiable, Equatable, Sendable {
         title: String,
         category: PlanItemCategory,
         obligationClass: ObligationClass,
-        priorityTier: Int = 3,
+        priorityTier: PriorityTier = .p3,
         section: PlanSection,
         timeWindow: PlanTimeWindow? = nil,
         effortBand: EffortBand? = nil,

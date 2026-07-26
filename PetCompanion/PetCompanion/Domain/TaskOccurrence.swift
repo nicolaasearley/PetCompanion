@@ -1,41 +1,31 @@
 import Foundation
 
 /// Who a task is for — Data Model doc 10 §9.2 `assignment_default` /
-/// §9.3 `assignment`. Serialized as a single string
-/// ("unassigned" | "anyone" | "member:<user_id>").
-enum Assignment: Equatable, Hashable, Codable, Sendable {
+/// §9.3. Stored in SQL as two columns, `assignment_kind`
+/// (`unassigned | member | anyone`) and `assignment_user_id` (uuid, set only
+/// when `assignment_kind == member`) — this enum is the app-side
+/// reconstruction of that pair.
+enum Assignment: Equatable, Hashable, Sendable {
     case unassigned
     case anyone
     case member(UUID)
 
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let raw = try container.decode(String.self)
-        switch raw {
-        case "unassigned":
-            self = .unassigned
-        case "anyone":
-            self = .anyone
-        default:
-            guard raw.hasPrefix("member:"),
-                  let uuid = UUID(uuidString: String(raw.dropFirst("member:".count)))
-            else {
-                throw DecodingError.dataCorruptedError(
-                    in: container,
-                    debugDescription: "Unknown assignment value: \(raw)"
-                )
-            }
-            self = .member(uuid)
+    /// Raw values match `public.assignment_kind`.
+    enum Kind: String, Codable, Sendable {
+        case unassigned, member, anyone
+    }
+
+    var kind: Kind {
+        switch self {
+        case .unassigned: .unassigned
+        case .anyone: .anyone
+        case .member: .member
         }
     }
 
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .unassigned: try container.encode("unassigned")
-        case .anyone: try container.encode("anyone")
-        case .member(let uuid): try container.encode("member:\(uuid.uuidString)")
-        }
+    var userId: UUID? {
+        if case .member(let uuid) = self { return uuid }
+        return nil
     }
 
     var displayText: String {
@@ -80,7 +70,8 @@ struct TaskOccurrence: Codable, Identifiable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, state, origin, revision, assignment, window
+        case id, state, origin, revision
+        case window = "window_ref"
         case occurrenceKey = "occurrence_key"
         case householdId = "household_id"
         case petId = "pet_id"
@@ -90,6 +81,8 @@ struct TaskOccurrence: Codable, Identifiable, Equatable, Sendable {
         case timePolicy = "time_policy"
         case dueTime = "due_time"
         case obligationClass = "obligation_class"
+        case assignmentKind = "assignment_kind"
+        case assignmentUserId = "assignment_user_id"
     }
 
     init(
@@ -124,5 +117,63 @@ struct TaskOccurrence: Codable, Identifiable, Equatable, Sendable {
         self.obligationClass = obligationClass
         self.origin = origin
         self.revision = revision
+    }
+
+    // MARK: - Codable (reconstructs `assignment` from the two SQL columns)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        occurrenceKey = try container.decode(String.self, forKey: .occurrenceKey)
+        householdId = try container.decode(UUID.self, forKey: .householdId)
+        petId = try container.decode(UUID.self, forKey: .petId)
+        scheduleId = try container.decodeIfPresent(UUID.self, forKey: .scheduleId)
+        localDueDate = try container.decode(Date.self, forKey: .localDueDate)
+        originalLocalDueDate = try container.decode(Date.self, forKey: .originalLocalDueDate)
+        timePolicy = try container.decode(TimePolicy.self, forKey: .timePolicy)
+        dueTime = try container.decodeIfPresent(Date.self, forKey: .dueTime)
+        window = try container.decodeIfPresent(PlanTimeWindow.self, forKey: .window)
+        state = try container.decode(State.self, forKey: .state)
+        obligationClass = try container.decode(ObligationClass.self, forKey: .obligationClass)
+        origin = try container.decode(TaskOrigin.self, forKey: .origin)
+        revision = try container.decode(Int.self, forKey: .revision)
+
+        let assignmentKind = try container.decode(Assignment.Kind.self, forKey: .assignmentKind)
+        let assignmentUserId = try container.decodeIfPresent(UUID.self, forKey: .assignmentUserId)
+        switch assignmentKind {
+        case .unassigned:
+            assignment = .unassigned
+        case .anyone:
+            assignment = .anyone
+        case .member:
+            guard let assignmentUserId else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .assignmentUserId,
+                    in: container,
+                    debugDescription: "assignment_kind 'member' requires assignment_user_id"
+                )
+            }
+            assignment = .member(assignmentUserId)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(occurrenceKey, forKey: .occurrenceKey)
+        try container.encode(householdId, forKey: .householdId)
+        try container.encode(petId, forKey: .petId)
+        try container.encodeIfPresent(scheduleId, forKey: .scheduleId)
+        try container.encode(localDueDate, forKey: .localDueDate)
+        try container.encode(originalLocalDueDate, forKey: .originalLocalDueDate)
+        try container.encode(timePolicy, forKey: .timePolicy)
+        try container.encodeIfPresent(dueTime, forKey: .dueTime)
+        try container.encodeIfPresent(window, forKey: .window)
+        try container.encode(state, forKey: .state)
+        try container.encode(obligationClass, forKey: .obligationClass)
+        try container.encode(origin, forKey: .origin)
+        try container.encode(revision, forKey: .revision)
+        try container.encode(assignment.kind, forKey: .assignmentKind)
+        try container.encodeIfPresent(assignment.userId, forKey: .assignmentUserId)
     }
 }

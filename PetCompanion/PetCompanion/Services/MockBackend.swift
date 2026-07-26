@@ -24,6 +24,11 @@ final class MockBackend {
     /// The caregiver partner ("Sarah" in the §26 fixtures) used for
     /// attributed sample completions.
     private(set) var partnerId = UUID()
+    /// The section an item lived in immediately before a completion moved
+    /// it to `.completed`, keyed by `PlanItem.id` — so undoing a completion
+    /// restores the original section (e.g. `recommended`) instead of always
+    /// landing in `.today` (B5).
+    private var preCompletionSection: [UUID: PlanSection] = [:]
 
     let calendar = Calendar.current
 
@@ -108,17 +113,23 @@ final class MockBackend {
     }
 
     /// The "next natural list update": completed items move to the
-    /// Completed section; undone items return to Today (doc 09 §8).
+    /// Completed section; undone items return to their original section —
+    /// `.today` for an obligation, `.recommended` for an accepted
+    /// recommendation (doc 09 §8, B5).
     private func resection(_ snapshot: inout PlanSnapshot) {
         for index in snapshot.items.indices {
             guard let occurrence = snapshot.occurrence(for: snapshot.items[index]),
                   snapshot.items[index].kind != .upcomingPreview,
                   snapshot.items[index].kind != .informational
             else { continue }
+            let itemId = snapshot.items[index].id
             if occurrence.state == .completed {
+                if snapshot.items[index].section != .completed {
+                    preCompletionSection[itemId] = snapshot.items[index].section
+                }
                 snapshot.items[index].section = .completed
             } else if occurrence.state == .pending, snapshot.items[index].section == .completed {
-                snapshot.items[index].section = .today
+                snapshot.items[index].section = preCompletionSection.removeValue(forKey: itemId) ?? .today
             }
         }
     }
@@ -242,7 +253,7 @@ final class MockBackend {
                 title: title,
                 category: .household,
                 obligationClass: .scheduled,
-                priorityTier: 2,
+                priorityTier: .p2,
                 section: .today,
                 timeWindow: .anytime
             )
@@ -264,7 +275,7 @@ final class MockBackend {
             petId: petId,
             localDate: localDate,
             timeZoneSnapshot: household.timeZone,
-            stageSnapshot: pet.stage(on: date).rawValue,
+            stageSnapshot: StageSnapshot(stageKey: pet.stage(on: date).rawValue),
             capacityModeApplied: household.defaultCapacityMode
         )
         let snapshot = pet.isPreArrival(on: date)
@@ -336,28 +347,28 @@ final class MockBackend {
                 occurrenceId: confirmVet.id,
                 title: "Confirm first veterinary appointment",
                 category: .preparation, obligationClass: .scheduled,
-                priorityTier: 2, section: .today, timeWindow: .anytime
+                priorityTier: .p2, section: .today, timeWindow: .anytime
             ),
             PlanItem(
                 planId: plan.id, itemKey: "occ:secure-cords", kind: .obligation,
                 occurrenceId: secureCords.id,
                 title: "Finish securing electrical cords",
                 category: .preparation, obligationClass: .scheduled,
-                priorityTier: 2, section: .today, timeWindow: .anytime
+                priorityTier: .p2, section: .today, timeWindow: .anytime
             ),
             PlanItem(
                 planId: plan.id, itemKey: "up:homecoming", kind: .upcomingPreview,
                 occurrenceId: homecomingOcc.id,
                 title: "\(pet.name) comes home",
                 category: .life, obligationClass: .informational,
-                priorityTier: 4, section: .comingUp
+                priorityTier: .p4, section: .comingUp
             ),
             PlanItem(
                 planId: plan.id, itemKey: "up:first-vet-visit", kind: .upcomingPreview,
                 occurrenceId: firstVetOcc.id,
                 title: "First veterinary appointment",
                 category: .event, obligationClass: .scheduled,
-                priorityTier: 4, section: .comingUp
+                priorityTier: .p4, section: .comingUp
             ),
         ]
 
@@ -367,7 +378,7 @@ final class MockBackend {
                 recommendationRuleRef: "rule.prep_window@1",
                 title: "Choose the first-night sleeping setup",
                 category: .preparation, obligationClass: .recommended,
-                priorityTier: 3, section: .recommended,
+                priorityTier: .p3, section: .recommended,
                 effortBand: .moderate,
                 explanationText: "Homecoming is \(daysAway) days away. Deciding where \(pet.name) sleeps makes the first evening calmer. Takes about 10 minutes."
             ),
@@ -376,7 +387,7 @@ final class MockBackend {
                 recommendationRuleRef: "rule.homecoming_routine@1",
                 title: "Review the household potty routine",
                 category: .preparation, obligationClass: .recommended,
-                priorityTier: 3, section: .recommended,
+                priorityTier: .p3, section: .recommended,
                 effortBand: .short,
                 explanationText: "Agreeing on one potty routine before homecoming helps every caregiver respond the same way. Takes a few minutes."
             ),
@@ -459,35 +470,35 @@ final class MockBackend {
                 occurrenceId: breakfast.id,
                 title: "Breakfast",
                 category: .feeding, obligationClass: .scheduled,
-                priorityTier: 2, section: .today, timeWindow: .morning
+                priorityTier: .p2, section: .today, timeWindow: .morning
             ),
             PlanItem(
                 planId: plan.id, itemKey: "occ:morning-potty", kind: .obligation,
                 occurrenceId: potty.id,
                 title: "Morning potty routine",
                 category: .routine, obligationClass: .scheduled,
-                priorityTier: 2, section: .today, timeWindow: .morning
+                priorityTier: .p2, section: .today, timeWindow: .morning
             ),
             PlanItem(
                 planId: plan.id, itemKey: "occ:evening-meal", kind: .obligation,
                 occurrenceId: eveningMeal.id,
                 title: "Evening meal",
                 category: .feeding, obligationClass: .scheduled,
-                priorityTier: 2, section: .today, timeWindow: .evening
+                priorityTier: .p2, section: .today, timeWindow: .evening
             ),
             PlanItem(
                 planId: plan.id, itemKey: "up:vet-appointment", kind: .upcomingPreview,
                 occurrenceId: vetAppointment.id,
                 title: "Veterinary appointment",
                 category: .event, obligationClass: .required,
-                priorityTier: 4, section: .comingUp
+                priorityTier: .p4, section: .comingUp
             ),
             PlanItem(
                 planId: plan.id, itemKey: "up:bring-records", kind: .upcomingPreview,
                 occurrenceId: bringRecords.id,
                 title: "Bring existing health records",
                 category: .preparation, obligationClass: .scheduled,
-                priorityTier: 4, section: .comingUp
+                priorityTier: .p4, section: .comingUp
             ),
         ]
 
@@ -499,7 +510,7 @@ final class MockBackend {
                 recommendationRuleRef: "rule.start_next_skill@1",
                 title: "Practice name response",
                 category: .training, obligationClass: .recommended,
-                priorityTier: 3, section: .recommended,
+                priorityTier: .p3, section: .recommended,
                 effortBand: .short,
                 explanationText: "Name response is part of \(pet.name)'s foundations stage, and it hasn't been practiced in the last few days. Takes about 3 minutes."
             ),
@@ -508,7 +519,7 @@ final class MockBackend {
                 recommendationRuleRef: "rule.socialization_breadth@1",
                 title: "Calmly observe one new environment",
                 category: .socialization, obligationClass: .recommended,
-                priorityTier: 3, section: .recommended,
+                priorityTier: .p3, section: .recommended,
                 effortBand: .short,
                 explanationText: "Gentle new experiences during \(pet.name)'s socialization window build confidence. Takes about 5 minutes."
             ),
@@ -517,7 +528,7 @@ final class MockBackend {
                 recommendationRuleRef: "rule.brushing@1",
                 title: "Brief brushing session",
                 category: .grooming, obligationClass: .recommended,
-                priorityTier: 3, section: .recommended,
+                priorityTier: .p3, section: .recommended,
                 effortBand: .tiny,
                 explanationText: "Short, positive brushing sessions build tolerance for grooming handling. Takes a minute or two."
             ),

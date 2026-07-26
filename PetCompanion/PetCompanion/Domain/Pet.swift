@@ -18,31 +18,56 @@ enum BirthInfo: Equatable, Hashable, Sendable {
 
 /// Development stage display helper.
 ///
-/// Real stage definitions are versioned global content
-/// (DevelopmentStageDefinition, doc 10 §10.5) that ships with the content
-/// catalogue; this enum is the UI-foundation placeholder with age *bands,
-/// not hard boundaries*, sufficient for the header chip and plan snapshots.
+/// Raw values match the seeded `development_stages.stage_key` values exactly
+/// (content catalogue doc 15 §4) so this enum decodes straight from the
+/// backend; bands are approximate, overlapping, and adaptable (F07) — this
+/// is an eligibility/display input, not a hard boundary.
 enum DevelopmentStage: String, Codable, CaseIterable, Sendable {
+    case preparing
+    case settlingIn = "settling_in"
     case foundations
-    case buildingOnBasics = "building_on_basics"
+    case exploration
+    case teething
+    case earlyAdolescence = "early_adolescence"
     case adolescence
-    case youngAdult = "young_adult"
+    case adulthood
 
-    static func forAge(weeks: Int) -> DevelopmentStage {
-        switch weeks {
-        case ..<16: .foundations
-        case 16..<26: .buildingOnBasics
-        case 26..<52: .adolescence
-        default: .youngAdult
+    /// Derives the stage from age-since-homecoming context (content
+    /// catalogue doc 15 §4 bands). `daysUntilHomecoming` takes precedence:
+    /// a future homecoming date always means `preparing`, regardless of
+    /// age (birth dates are frequently estimated pre-arrival).
+    static func forAge(
+        weeks: Int,
+        daysSinceHomecoming: Int? = nil,
+        daysUntilHomecoming: Int? = nil
+    ) -> DevelopmentStage {
+        if daysUntilHomecoming != nil {
+            return .preparing
+        }
+        if let daysSinceHomecoming, daysSinceHomecoming < 14 {
+            return .settlingIn
+        }
+        return switch weeks {
+        case ..<8: .settlingIn
+        case 8..<12: .foundations
+        case 12..<16: .exploration
+        case 16..<24: .teething
+        case 24..<39: .earlyAdolescence // ~6-9 months
+        case 39..<78: .adolescence // ~9-18 months
+        default: .adulthood // 18+ months
         }
     }
 
     var displayName: String {
         switch self {
+        case .preparing: "Preparing for arrival"
+        case .settlingIn: "Settling in"
         case .foundations: "Foundations"
-        case .buildingOnBasics: "Building on basics"
+        case .exploration: "Exploration and socialization"
+        case .teething: "Teething"
+        case .earlyAdolescence: "Early adolescence"
         case .adolescence: "Adolescence"
-        case .youngAdult: "Young adult"
+        case .adulthood: "Adulthood"
         }
     }
 }
@@ -116,7 +141,10 @@ struct Pet: Identifiable, Equatable, Codable, Sendable {
         breedText = try container.decodeIfPresent(String.self, forKey: .breedText)
         sex = try container.decodeIfPresent(String.self, forKey: .sex)
         homecomingDate = try container.decodeIfPresent(Date.self, forKey: .homecomingDate)
-        stageOverride = try container.decodeIfPresent(DevelopmentStage.self, forKey: .stageOverride)
+        // `stage_override` is free text in SQL (not an enum column) — an
+        // unrecognized value must decode to nil, never throw.
+        stageOverride = try container.decodeIfPresent(String.self, forKey: .stageOverride)
+            .flatMap { DevelopmentStage(rawValue: $0) }
         status = try container.decode(Status.self, forKey: .status)
         revision = try container.decode(Int.self, forKey: .revision)
 
@@ -190,7 +218,20 @@ struct Pet: Identifiable, Equatable, Codable, Sendable {
     }
 
     func stage(on date: Date = Date(), calendar: Calendar = .current) -> DevelopmentStage {
-        stageOverride ?? .forAge(weeks: ageInWeeks(on: date, calendar: calendar))
+        if let stageOverride { return stageOverride }
+        var daysSinceHomecoming: Int?
+        if let homecomingDate, daysUntilHomecoming(from: date, calendar: calendar) == nil {
+            daysSinceHomecoming = calendar.dateComponents(
+                [.day],
+                from: calendar.startOfDay(for: homecomingDate),
+                to: calendar.startOfDay(for: date)
+            ).day
+        }
+        return .forAge(
+            weeks: ageInWeeks(on: date, calendar: calendar),
+            daysSinceHomecoming: daysSinceHomecoming,
+            daysUntilHomecoming: daysUntilHomecoming(from: date, calendar: calendar)
+        )
     }
 
     /// Header line: "12 wks · Foundations".

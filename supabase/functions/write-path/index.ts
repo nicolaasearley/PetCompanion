@@ -1,0 +1,363 @@
+import type {
+  CommandEnvelope,
+  CommandFailure,
+  CommandSuccess,
+  CreateHouseholdPayload,
+  CreatePetPayload,
+  SliceACommand,
+} from "../../../packages/write-path/src/envelope";
+
+declare const Deno: {
+  env: {
+    get(name: string): string | undefined;
+  };
+  serve(handler: (request: Request) => Response | Promise<Response>): void;
+};
+
+type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+
+interface AuthUser {
+  id: string;
+}
+
+const implementedCommands: ReadonlySet<SliceACommand> = new Set([
+  "create_household",
+  "create_pet",
+]);
+
+const stubbedCommands: ReadonlySet<SliceACommand> = new Set([
+  "set_routine_preferences",
+  "create_task",
+  "complete_occurrence",
+  "undo_completion",
+  "skip_item",
+]);
+
+Deno.serve(async (request) => {
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, code: "METHOD_NOT_ALLOWED", message: "Use POST." }, 405);
+  }
+
+  let envelope: CommandEnvelope;
+  try {
+    envelope = await request.json();
+    validateEnvelope(envelope);
+  } catch (error) {
+    return jsonResponse(failure("BAD_REQUEST", messageOf(error)), 400);
+  }
+
+  let user: AuthUser;
+  try {
+    user = await authenticate(request);
+  } catch (error) {
+    return jsonResponse(failure("UNAUTHORIZED", messageOf(error), envelope.command), 401);
+  }
+
+  const payloadHash = await sha256Hex(stableStringify(envelope.payload));
+  const replay = await findReplay(user.id, envelope.client_idempotency_key);
+  if (replay) {
+    if (replay.command !== envelope.command || replay.payload_hash !== payloadHash) {
+      return jsonResponse(failure("IDEMPOTENCY_CONFLICT", "Idempotency key was reused with a different command or payload.", envelope.command), 409);
+    }
+
+    const body = replay.status === "succeeded"
+      ? success(envelope.command, replay.response_body, true)
+      : failure(replay.error_code ?? "COMMAND_FAILED", "Replayed command failed with the same stored result.", envelope.command, true);
+    return jsonResponse(body, replay.status === "succeeded" ? 200 : statusForError(replay.error_code));
+  }
+
+  if (stubbedCommands.has(envelope.command)) {
+    const body = failure("NOT_IMPLEMENTED", `${envelope.command} is stubbed for Slice A WP-1.`, envelope.command);
+    await recordCommandFailure(user.id, envelope, payloadHash, body.code);
+    return jsonResponse(body, 501);
+  }
+
+  if (!implementedCommands.has(envelope.command)) {
+    return jsonResponse(failure("UNKNOWN_COMMAND", "Unsupported command.", envelope.command), 400);
+  }
+
+  try {
+    if (envelope.command === "create_household") {
+      assertCreateHouseholdPayload(envelope.payload);
+      const result = await rpc("write_path_create_household", {
+        actor_id: user.id,
+        idempotency_key: envelope.client_idempotency_key,
+        payload_hash_input: payloadHash,
+        request_body_input: envelope as unknown as Json,
+        recorded_at_input: envelope.recorded_at,
+        effective_at_input: envelope.effective_at ?? null,
+        payload_input: envelope.payload as unknown as Json,
+      });
+      return jsonResponse(success(envelope.command, result, false), 200);
+    }
+
+    assertCreatePetPayload(envelope.payload);
+    await assertActiveMembership(user.id, envelope.payload.household_id);
+    const result = await rpc("write_path_create_pet", {
+      actor_id: user.id,
+      idempotency_key: envelope.client_idempotency_key,
+      payload_hash_input: payloadHash,
+      request_body_input: envelope as unknown as Json,
+      recorded_at_input: envelope.recorded_at,
+      effective_at_input: envelope.effective_at ?? null,
+      payload_input: envelope.payload as unknown as Json,
+    });
+    return jsonResponse(success(envelope.command, result, false), 200);
+  } catch (error) {
+    const code = codeOf(error);
+    await safeRecordFailure(user.id, envelope, payloadHash, code);
+    return jsonResponse(failure(code, messageOf(error), envelope.command), statusForError(code));
+  }
+});
+
+function validateEnvelope(value: unknown): asserts value is CommandEnvelope {
+  if (!isRecord(value)) throw new Error("Body must be a JSON object.");
+  if (typeof value.command !== "string") throw new Error("command is required.");
+  if (typeof value.client_idempotency_key !== "string" || value.client_idempotency_key.trim() === "") {
+    throw new Error("client_idempotency_key is required.");
+  }
+  if (typeof value.recorded_at !== "string" || Number.isNaN(Date.parse(value.recorded_at))) {
+    throw new Error("recorded_at must be an ISO timestamp.");
+  }
+  if ("effective_at" in value && value.effective_at !== undefined && (typeof value.effective_at !== "string" || Number.isNaN(Date.parse(value.effective_at)))) {
+    throw new Error("effective_at must be an ISO timestamp when provided.");
+  }
+  if (!("payload" in value) || !isJson(value.payload)) throw new Error("payload must be JSON.");
+}
+
+function assertCreateHouseholdPayload(value: unknown): asserts value is CreateHouseholdPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  if (typeof value.name !== "string" || value.name.trim() === "") throw new Error("payload.name is required.");
+  if (typeof value.time_zone !== "string" || value.time_zone.trim() === "") throw new Error("payload.time_zone is required.");
+  if ("default_capacity_mode" in value && value.default_capacity_mode !== undefined && !["normal", "busy", "essentials_only", "custom"].includes(String(value.default_capacity_mode))) {
+    throw new Error("payload.default_capacity_mode is invalid.");
+  }
+}
+
+function assertCreatePetPayload(value: unknown): asserts value is CreatePetPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  if (typeof value.household_id !== "string" || value.household_id.trim() === "") throw new Error("payload.household_id is required.");
+  if (typeof value.name !== "string" || value.name.trim() === "") throw new Error("payload.name is required.");
+  if (value.species !== undefined && value.species !== "dog") throw new Error("payload.species must be dog in MVP.");
+  if (value.birth_date_kind !== "exact" && value.birth_date_kind !== "estimated") throw new Error("payload.birth_date_kind must be exact or estimated.");
+
+  if (value.birth_date_kind === "exact") {
+    if (typeof value.birth_date !== "string") throw new Error("payload.birth_date is required for exact birth date.");
+    if (Number.isNaN(Date.parse(`${value.birth_date}T00:00:00Z`))) throw new Error("payload.birth_date must be YYYY-MM-DD.");
+    if (value.estimated_age_weeks !== undefined || value.estimated_as_of_date !== undefined) {
+      throw new Error("estimated birth fields are not allowed for exact birth date.");
+    }
+  }
+
+  if (value.birth_date_kind === "estimated") {
+    if (typeof value.estimated_age_weeks !== "number" || !Number.isInteger(value.estimated_age_weeks) || value.estimated_age_weeks < 0) {
+      throw new Error("payload.estimated_age_weeks must be a non-negative integer.");
+    }
+    if (typeof value.estimated_as_of_date !== "string") throw new Error("payload.estimated_as_of_date is required for estimated birth date.");
+    if (isFutureDate(value.estimated_as_of_date)) throw new Error("Future estimated_as_of_date is rejected in MVP.");
+    if (value.birth_date !== undefined) throw new Error("payload.birth_date is not allowed for estimated birth date.");
+  }
+
+  if (typeof value.birth_date === "string" && isFutureDate(value.birth_date)) {
+    throw new Error("Future birth_date is rejected in MVP.");
+  }
+  if (typeof value.birth_date === "string" && typeof value.homecoming_date === "string" && value.homecoming_date < value.birth_date) {
+    throw new Error("homecoming_date must be on or after birth_date.");
+  }
+}
+
+async function authenticate(request: Request): Promise<AuthUser> {
+  const authorization = request.headers.get("authorization");
+  if (!authorization?.startsWith("Bearer ")) throw new Error("Missing bearer token.");
+
+  const response = await fetch(`${env("SUPABASE_URL")}/auth/v1/user`, {
+    headers: {
+      authorization,
+      apikey: env("SUPABASE_ANON_KEY"),
+    },
+  });
+  if (!response.ok) throw new Error("Invalid bearer token.");
+  const body = await response.json() as { id?: unknown };
+  if (typeof body.id !== "string") throw new Error("Authenticated user id missing.");
+  return { id: body.id };
+}
+
+async function assertActiveMembership(actorUserId: string, householdId: string): Promise<void> {
+  const params = new URLSearchParams({
+    select: "id",
+    household_id: `eq.${householdId}`,
+    user_id: `eq.${actorUserId}`,
+    status: "eq.active",
+    limit: "1",
+  });
+  const rows = await restGet<Array<{ id: string }>>(`household_memberships?${params.toString()}`);
+  if (rows.length !== 1) throw taggedError("FORBIDDEN", "Active household membership required.");
+}
+
+async function findReplay(actorUserId: string, key: string): Promise<null | { command: string; payload_hash: string; response_body: Json; status: "succeeded" | "failed"; error_code: string | null }> {
+  const params = new URLSearchParams({
+    select: "command,payload_hash,response_body,status,error_code",
+    actor_user_id: `eq.${actorUserId}`,
+    client_idempotency_key: `eq.${key}`,
+    limit: "1",
+  });
+  const rows = await restGet<Array<{ command: string; payload_hash: string; response_body: Json; status: "succeeded" | "failed"; error_code: string | null }>>(`command_log?${params.toString()}`);
+  return rows[0] ?? null;
+}
+
+async function recordCommandFailure(actorUserId: string, envelope: CommandEnvelope, payloadHash: string, errorCode: string): Promise<void> {
+  await restPost("command_log", {
+    actor_user_id: actorUserId,
+    client_idempotency_key: envelope.client_idempotency_key,
+    command: envelope.command,
+    payload_hash: payloadHash,
+    request_body: envelope,
+    response_body: { ok: false, code: errorCode },
+    status: "failed",
+    error_code: errorCode,
+    recorded_at: envelope.recorded_at,
+    effective_at: envelope.effective_at ?? null,
+    completed_at: new Date().toISOString(),
+  });
+}
+
+async function safeRecordFailure(actorUserId: string, envelope: CommandEnvelope, payloadHash: string, errorCode: string): Promise<void> {
+  try {
+    await recordCommandFailure(actorUserId, envelope, payloadHash, errorCode);
+  } catch {
+    // The original command error is more useful to the caller than a secondary logging failure.
+  }
+}
+
+async function rpc<T>(functionName: string, body: Record<string, Json>): Promise<T> {
+  return restPost<T>(`rpc/${functionName}`, body);
+}
+
+async function restGet<T>(path: string): Promise<T> {
+  const response = await fetch(`${env("SUPABASE_URL")}/rest/v1/${path}`, {
+    headers: serviceHeaders(),
+  });
+  return parseRestResponse<T>(response);
+}
+
+async function restPost<T = Json>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${env("SUPABASE_URL")}/rest/v1/${path}`, {
+    method: "POST",
+    headers: {
+      ...serviceHeaders(),
+      "content-type": "application/json",
+      prefer: "return=representation",
+    },
+    body: JSON.stringify(body),
+  });
+  return parseRestResponse<T>(response);
+}
+
+async function parseRestResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  const parsed = text ? JSON.parse(text) as T : null as T;
+  if (!response.ok) {
+    const record = isRecord(parsed) ? parsed : {};
+    throw taggedError(
+      typeof record.code === "string" ? record.code : "DATABASE_ERROR",
+      typeof record.message === "string" ? record.message : response.statusText,
+    );
+  }
+  return parsed;
+}
+
+function serviceHeaders(): Record<string, string> {
+  const serviceRoleKey = env("SUPABASE_SERVICE_ROLE_KEY");
+  return {
+    apikey: serviceRoleKey,
+    authorization: `Bearer ${serviceRoleKey}`,
+  };
+}
+
+function env(name: string): string {
+  const value = Deno.env.get(name);
+  if (!value) throw new Error(`${name} is not configured.`);
+  return value;
+}
+
+function success<T>(command: SliceACommand, result: T, idempotentReplay: boolean): CommandSuccess<T> {
+  return { ok: true, command, idempotent_replay: idempotentReplay, result };
+}
+
+function failure(code: string, message: string, command?: SliceACommand, idempotentReplay = false): CommandFailure {
+  return { ok: false, command, code, message, idempotent_replay: idempotentReplay };
+}
+
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isJson(value: unknown): value is Json {
+  if (value === null) return true;
+  if (["string", "number", "boolean"].includes(typeof value)) return Number.isFinite(value as number) || typeof value !== "number";
+  if (Array.isArray(value)) return value.every(isJson);
+  if (isRecord(value)) return Object.values(value).every(isJson);
+  return false;
+}
+
+function isFutureDate(date: string): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  return date > today;
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const bytes = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (isRecord(value)) {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function taggedError(code: string, message: string): Error & { code: string } {
+  const error = new Error(message) as Error & { code: string };
+  error.code = code;
+  return error;
+}
+
+function codeOf(error: unknown): string {
+  if (isRecord(error) && typeof error.code === "string") {
+    if (error.code === "42501") return "FORBIDDEN";
+    if (error.code === "23505") return "IDEMPOTENCY_CONFLICT";
+    if (error.code === "22023" || error.code === "23514" || error.code === "22P02") return "VALIDATION_FAILED";
+    return error.code;
+  }
+  return "COMMAND_FAILED";
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error.";
+}
+
+function statusForError(code: string | null | undefined): number {
+  switch (code) {
+    case "FORBIDDEN":
+      return 403;
+    case "IDEMPOTENCY_CONFLICT":
+      return 409;
+    case "VALIDATION_FAILED":
+    case "BAD_REQUEST":
+      return 400;
+    case "NOT_IMPLEMENTED":
+      return 501;
+    default:
+      return 500;
+  }
+}

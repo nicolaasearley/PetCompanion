@@ -96,6 +96,24 @@ final class MockBackend {
         return pet
     }
 
+    /// Slice A WP-2: registers an already-existing household/pet — from the
+    /// real local Supabase backend, in `.local` mode — under their real
+    /// ids. `PlanService` intentionally stays mock in every backend mode
+    /// (plan generation isn't built yet, doc 17 WP-3/WP-4), so `AppModel`
+    /// calls this whenever `household`/`activePet` change so `generatePlan`
+    /// finds a pet with the id `HomeViewModel` actually requests instead of
+    /// hitting the "must exist" precondition against an empty backend.
+    /// This intentionally does NOT touch `members`/`users` — Home doesn't
+    /// need them for the mock plan fixtures.
+    func adopt(household: Household, pet: Pet) {
+        self.household = household
+        if let index = pets.firstIndex(where: { $0.id == pet.id }) {
+            pets[index] = pet
+        } else {
+            pets.append(pet)
+        }
+    }
+
     // MARK: - Plans
 
     private func planKey(petId: UUID, date: Date) -> String {

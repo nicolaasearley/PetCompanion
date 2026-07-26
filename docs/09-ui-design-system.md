@@ -17,7 +17,8 @@ per-screen invention.
 
 ## 2. Scope and exclusions
 
-Covers the mobile MVP (React Native, light and dark mode). Excludes: brand
+Covers the mobile MVP (native iOS SwiftUI per the revised platform decision,
+light and dark mode). Excludes: brand
 identity beyond a working palette (logo, final name treatment), marketing
 surfaces, illustration library production, and tablet layouts. Token values
 below are a validated starting point, not a final brand; changing them is a

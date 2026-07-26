@@ -529,7 +529,12 @@ create table public.dispositions (
     or (action = 'reschedule' and reschedule_to is not null and snooze_until is null and skip_reason is null)
     or (action not in ('skip', 'snooze', 'reschedule') and skip_reason is null and snooze_until is null and reschedule_to is null)
   ),
-  constraint dispositions_effective_not_future check (effective_at <= recorded_at + interval '5 minutes'),
+  -- Back-dating window per Data Model 8.3: not in the future (small clock-skew allowance),
+  -- and no more than 7 days before recorded_at (older corrections need the explicit history-correction flow).
+  constraint dispositions_effective_not_future check (
+    effective_at <= recorded_at + interval '5 minutes'
+    and effective_at >= recorded_at - interval '7 days'
+  ),
   constraint dispositions_json_shapes check (
     (media_refs is null or jsonb_typeof(media_refs) = 'array')
     and jsonb_typeof(device_metadata) = 'object'
@@ -943,3 +948,13 @@ create policy "socialization catalog world read" on public.socialization_catalog
 -- 11: PlanItem content refs point only at published ContentVersions; this needs cross-table lookup during generation.
 -- 12: dismiss_required and back-dated completions produce AuditEvents transactionally with their command.
 -- Pet birth_date and estimated_as_of_date not-in-future checks are enforced in write_path_create_pet because "future" is time-relative.
+
+-- Write-path RPC lockdown: these SECURITY DEFINER functions trust their actor_id
+-- parameter, so they must be callable ONLY by the service role (the edge function,
+-- which derives actor_id from the verified JWT). Without this, any client holding
+-- the anon key could call them directly via PostgREST with a spoofed actor_id.
+-- Every future write_path_* function MUST repeat this lockdown.
+revoke execute on function public.write_path_create_household(uuid, text, text, jsonb, timestamptz, timestamptz, jsonb) from public, anon, authenticated;
+revoke execute on function public.write_path_create_pet(uuid, text, text, jsonb, timestamptz, timestamptz, jsonb) from public, anon, authenticated;
+grant execute on function public.write_path_create_household(uuid, text, text, jsonb, timestamptz, timestamptz, jsonb) to service_role;
+grant execute on function public.write_path_create_pet(uuid, text, text, jsonb, timestamptz, timestamptz, jsonb) to service_role;

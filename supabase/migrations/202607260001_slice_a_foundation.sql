@@ -958,3 +958,18 @@ revoke execute on function public.write_path_create_household(uuid, text, text, 
 revoke execute on function public.write_path_create_pet(uuid, text, text, jsonb, timestamptz, timestamptz, jsonb) from public, anon, authenticated;
 grant execute on function public.write_path_create_household(uuid, text, text, jsonb, timestamptz, timestamptz, jsonb) to service_role;
 grant execute on function public.write_path_create_pet(uuid, text, text, jsonb, timestamptz, timestamptz, jsonb) to service_role;
+
+-- Base table privileges. RLS restricts WHICH rows are visible; these grants define
+-- WHICH operations are possible at all. Model:
+--   authenticated: SELECT everywhere (RLS default-deny hides rows on tables without
+--     a read policy, e.g. command_log), plus INSERT/UPDATE only on the self-scoped
+--     user-owned tables whose RLS WITH CHECK policies bound them.
+--   service_role: full access (the write-path edge function).
+--   anon: nothing — unauthenticated clients have no direct data access; invitation
+--     preview happens through the edge function.
+-- Future migrations that add tables MUST add the matching grants.
+grant usage on schema public to authenticated, service_role;
+grant select on all tables in schema public to authenticated;
+grant insert, update on public.user_profiles, public.user_preferences to authenticated;
+grant all on all tables in schema public to service_role;
+grant usage, select on all sequences in schema public to service_role;

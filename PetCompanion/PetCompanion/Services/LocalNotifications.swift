@@ -289,8 +289,16 @@ protocol LocalNotificationServicing: AnyObject {
     func deactivate()
     func setEnabled(_ enabled: Bool) async -> NotificationPermission
     func updatePreferences(_ preferences: LocalNotificationPreferences) async
-    func reconcile(snapshot: PlanSnapshot) async
+    func reconcile(snapshot: PlanSnapshot, now: Date) async
     func cancelPending() async
+}
+
+extension LocalNotificationServicing {
+    /// Production callers reconcile against the current instant. Tests supply an
+    /// explicit `now` so candidate expiry does not depend on the wall clock.
+    func reconcile(snapshot: PlanSnapshot) async {
+        await reconcile(snapshot: snapshot, now: Date())
+    }
 }
 
 @MainActor
@@ -406,7 +414,7 @@ final class LocalNotificationService: LocalNotificationServicing {
         }
     }
 
-    func reconcile(snapshot: PlanSnapshot) async {
+    func reconcile(snapshot: PlanSnapshot, now: Date) async {
         lastSnapshot = snapshot
         guard let accountId = activeAccountId else { return }
         permission = await center.permission()
@@ -420,7 +428,8 @@ final class LocalNotificationService: LocalNotificationServicing {
 
         let requests = LocalNotificationCandidateBuilder.candidates(
             snapshot: snapshot,
-            preferences: preferences
+            preferences: preferences,
+            now: now
         ).map { candidate in
             LocalNotificationRequest(
                 identifier: namespace + candidate.id,

@@ -133,19 +133,24 @@ final class LocalNotificationsTests: XCTestCase {
         )
         service.activate(accountId: accountId)
         _ = await service.setEnabled(true)
-        await service.reconcile(snapshot: reminderFixture(hour: 15).snapshot)
+        // Pin the clock to the fixture's own instant. Reconciling against the
+        // real one made this pass only before the fixture's fire time had
+        // elapsed, so it failed every afternoon.
+        let fixture = reminderFixture(hour: 15)
+        await service.reconcile(snapshot: fixture.snapshot, now: fixture.now)
 
         let replacement = try XCTUnwrap(center.replacements.last)
         XCTAssertEqual(replacement.0, "pc.local.\(accountId.uuidString).")
         XCTAssertEqual(replacement.1.count, 1)
-        XCTAssertTrue(replacement.1[0].identifier.hasPrefix(replacement.0))
-        XCTAssertEqual(replacement.1[0].deepLink.destination, .planItem)
+        let request = try XCTUnwrap(replacement.1.first)
+        XCTAssertTrue(request.identifier.hasPrefix(replacement.0))
+        XCTAssertEqual(request.deepLink.destination, .planItem)
         XCTAssertEqual(center.requestCount, 0)
 
         let decoded = AppDeepLinkTarget(
-            notificationUserInfo: replacement.1[0].deepLink.notificationUserInfo
+            notificationUserInfo: request.deepLink.notificationUserInfo
         )
-        XCTAssertEqual(decoded, replacement.1[0].deepLink)
+        XCTAssertEqual(decoded, request.deepLink)
 
         _ = await service.setEnabled(false)
         XCTAssertTrue(center.removals.contains(replacement.0))

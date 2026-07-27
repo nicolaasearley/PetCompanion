@@ -10,14 +10,30 @@
 		C3BCAEAF22306BED320CFFE9 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 0E569F6F7BF488595798D66C /* Supabase */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		000000000000000000000151 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000100000000;
+			remoteInfo = PetCompanion;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* PetCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PetCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000121 /* PetCompanionTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PetCompanionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000010 /* PetCompanion */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = PetCompanion;
+			sourceTree = "<group>";
+		};
+		000000000000000000000011 /* PetCompanionTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PetCompanionTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -29,6 +45,11 @@
 				C3BCAEAF22306BED320CFFE9 /* Supabase in Frameworks */,
 			);
 		};
+		000000000000000130000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -36,6 +57,7 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000010 /* PetCompanion */,
+				000000000000000000000011 /* PetCompanionTests */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -44,6 +66,7 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000120 /* PetCompanion.app */,
+				000000000000000000000121 /* PetCompanionTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -68,9 +91,30 @@
 			packageProductDependencies = (
 				0E569F6F7BF488595798D66C /* Supabase */,
 			);
-			productName = MyApp;
+			productName = PetCompanion;
 			productReference = 000000000000000000000120 /* PetCompanion.app */;
 			productType = "com.apple.product-type.application";
+		};
+		000000000000000100000001 /* PetCompanionTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 000000000000000110000001 /* Build configuration list for PBXNativeTarget "PetCompanionTests" */;
+			buildPhases = (
+				000000000000000120000001 /* Sources */,
+				000000000000000130000001 /* Frameworks */,
+				000000000000000140000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				000000000000000000000150 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				000000000000000000000011 /* PetCompanionTests */,
+			);
+			name = PetCompanionTests;
+			productName = PetCompanionTests;
+			productReference = 000000000000000000000121 /* PetCompanionTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -84,6 +128,10 @@
 				TargetAttributes = {
 					000000000000000100000000 = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					000000000000000100000001 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 000000000000000100000000;
 					};
 				};
 			};
@@ -105,12 +153,18 @@
 			projectRoot = "";
 			targets = (
 				000000000000000100000000 /* PetCompanion */,
+				000000000000000100000001 /* PetCompanionTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		000000000000000140000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		000000000000000140000001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -123,7 +177,20 @@
 			files = (
 			);
 		};
+		000000000000000120000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		000000000000000000000150 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 000000000000000100000000 /* PetCompanion */;
+			targetProxy = 000000000000000000000151 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		000000000000000011000000 /* Debug configuration for PBXProject "PetCompanion" */ = {
@@ -261,14 +328,15 @@
 		000000000000000111000000 /* Debug configuration for PBXNativeTarget "PetCompanion" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 2787685448;
-				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_PC_BACKEND_MODE = "$(PC_BACKEND_MODE)";
+				INFOPLIST_KEY_PC_SUPABASE_ANON_KEY = "$(PC_SUPABASE_ANON_KEY)";
+				INFOPLIST_KEY_PC_SUPABASE_URL = "$(PC_SUPABASE_URL)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -280,34 +348,36 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "devplaceholder.$(PROJECT_UNIQUE_VALUE:identifier).$(PRODUCT_NAME:identifier)";
+				PC_BACKEND_MODE = local;
+				PC_SUPABASE_ANON_KEY = sb_publishable_hZ68iCvx2pFAClNN1nJkdw_8HRjGj3W;
+				PC_SUPABASE_URL = "https://fhiqnhmqbkapydvyvost.supabase.co";
+				PRODUCT_BUNDLE_IDENTIFIER = com.nic.petcompanion;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
+				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
 		000000000000000112000000 /* Release configuration for PBXNativeTarget "PetCompanion" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 2787685448;
-				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_PC_BACKEND_MODE = "$(PC_BACKEND_MODE)";
+				INFOPLIST_KEY_PC_SUPABASE_ANON_KEY = "$(PC_SUPABASE_ANON_KEY)";
+				INFOPLIST_KEY_PC_SUPABASE_URL = "$(PC_SUPABASE_URL)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -319,20 +389,57 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "devplaceholder.$(PROJECT_UNIQUE_VALUE:identifier).$(PRODUCT_NAME:identifier)";
+				PC_BACKEND_MODE = hosted;
+				PC_SUPABASE_ANON_KEY = sb_publishable_hZ68iCvx2pFAClNN1nJkdw_8HRjGj3W;
+				PC_SUPABASE_URL = "https://fhiqnhmqbkapydvyvost.supabase.co";
+				PRODUCT_BUNDLE_IDENTIFIER = com.nic.petcompanion;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
+				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		000000000000000113000000 /* Debug configuration for PBXNativeTarget "PetCompanionTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nic.petcompanion.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PetCompanion.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PetCompanion";
+			};
+			name = Debug;
+		};
+		000000000000000114000000 /* Release configuration for PBXNativeTarget "PetCompanionTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nic.petcompanion.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PetCompanion.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PetCompanion";
 			};
 			name = Release;
 		};
@@ -355,6 +462,14 @@
 			);
 			defaultConfigurationName = Release;
 		};
+		000000000000000110000001 /* Build configuration list for PBXNativeTarget "PetCompanionTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000113000000 /* Debug configuration for PBXNativeTarget "PetCompanionTests" */,
+				000000000000000114000000 /* Release configuration for PBXNativeTarget "PetCompanionTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -365,6 +480,8 @@
 				kind = upToNextMajorVersion;
 				minimumVersion = 2.53.0;
 			};
+			traits = (
+			);
 		};
 /* End XCRemoteSwiftPackageReference section */
 

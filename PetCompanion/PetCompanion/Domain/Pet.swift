@@ -9,10 +9,18 @@ enum BirthInfo: Equatable, Hashable, Sendable {
     /// correctly without pretending a birthday exists. Display language
     /// must qualify: "about 9 weeks" (US-021).
     case estimated(ageWeeks: Int, asOfDate: Date)
+    /// Permitted before arrival when the caregiver genuinely does not know
+    /// the puppy's age yet. No synthetic birthday is invented.
+    case unknown
 
     var isEstimated: Bool {
         if case .estimated = self { return true }
         return false
+    }
+
+    var isKnown: Bool {
+        if case .unknown = self { return false }
+        return true
     }
 }
 
@@ -23,6 +31,8 @@ enum BirthInfo: Equatable, Hashable, Sendable {
 /// backend; bands are approximate, overlapping, and adaptable (F07) — this
 /// is an eligibility/display input, not a hard boundary.
 enum DevelopmentStage: String, Codable, CaseIterable, Sendable {
+    /// Client-safe fallback when age and arrival context are insufficient.
+    case unknown
     case preparing
     case settlingIn = "settling_in"
     case foundations
@@ -60,6 +70,7 @@ enum DevelopmentStage: String, Codable, CaseIterable, Sendable {
 
     var displayName: String {
         switch self {
+        case .unknown: "Stage not set"
         case .preparing: "Preparing for arrival"
         case .settlingIn: "Settling in"
         case .foundations: "Foundations"
@@ -157,6 +168,8 @@ struct Pet: Identifiable, Equatable, Codable, Sendable {
                 ageWeeks: try container.decode(Int.self, forKey: .estimatedAgeWeeks),
                 asOfDate: try container.decode(Date.self, forKey: .estimatedAsOfDate)
             )
+        case "unknown":
+            birthInfo = .unknown
         default:
             throw DecodingError.dataCorruptedError(
                 forKey: .birthDateKind,
@@ -187,6 +200,8 @@ struct Pet: Identifiable, Equatable, Codable, Sendable {
             try container.encode("estimated", forKey: .birthDateKind)
             try container.encode(ageWeeks, forKey: .estimatedAgeWeeks)
             try container.encode(asOfDate, forKey: .estimatedAsOfDate)
+        case .unknown:
+            try container.encode("unknown", forKey: .birthDateKind)
         }
     }
 
@@ -207,6 +222,8 @@ struct Pet: Identifiable, Equatable, Codable, Sendable {
             return max(0, days(from: birthDate, to: date) / 7)
         case .estimated(let ageWeeks, let asOfDate):
             return max(0, ageWeeks + days(from: asOfDate, to: date) / 7)
+        case .unknown:
+            return 0
         }
     }
 
@@ -214,7 +231,14 @@ struct Pet: Identifiable, Equatable, Codable, Sendable {
     /// US-021, doc 09 §9).
     func ageDisplay(on date: Date = Date(), calendar: Calendar = .current) -> String {
         let weeks = ageInWeeks(on: date, calendar: calendar)
-        return birthInfo.isEstimated ? "about \(weeks) weeks" : "\(weeks) wks"
+        switch birthInfo {
+        case .exact:
+            return "\(weeks) wks"
+        case .estimated:
+            return "about \(weeks) weeks"
+        case .unknown:
+            return "Age not set"
+        }
     }
 
     func stage(on date: Date = Date(), calendar: Calendar = .current) -> DevelopmentStage {
@@ -226,6 +250,15 @@ struct Pet: Identifiable, Equatable, Codable, Sendable {
                 from: calendar.startOfDay(for: homecomingDate),
                 to: calendar.startOfDay(for: date)
             ).day
+        }
+        if case .unknown = birthInfo {
+            if daysUntilHomecoming(from: date, calendar: calendar) != nil {
+                return .preparing
+            }
+            if let daysSinceHomecoming, daysSinceHomecoming < 14 {
+                return .settlingIn
+            }
+            return .unknown
         }
         return .forAge(
             weeks: ageInWeeks(on: date, calendar: calendar),

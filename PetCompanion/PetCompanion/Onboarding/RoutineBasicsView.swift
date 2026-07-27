@@ -10,6 +10,7 @@ struct RoutineBasicsView: View {
     @Environment(AppModel.self) private var model
     @State private var preferences = HouseholdPreference.reviewedDefaults
     @State private var isSubmitting = false
+    @State private var errorMessage: String?
 
     private let morningOptions = [TimeBand(startHour: 5, endHour: 8), TimeBand(startHour: 6, endHour: 9), TimeBand(startHour: 7, endHour: 10)]
     private let middayOptions = [TimeBand(startHour: 11, endHour: 13), TimeBand(startHour: 12, endHour: 14)]
@@ -55,6 +56,10 @@ struct RoutineBasicsView: View {
                     Text("These routines switch on when \(pet.name) comes home.")
                         .font(Font.pc.secondary)
                         .foregroundStyle(Color.pc.inkSecondary)
+                }
+
+                if let errorMessage {
+                    PCInlineError(message: errorMessage)
                 }
 
                 VStack(spacing: PCSpacing.md) {
@@ -107,11 +112,17 @@ struct RoutineBasicsView: View {
 
     private func save(_ prefs: HouseholdPreference) {
         guard !isSubmitting else { return }
+        errorMessage = nil
         isSubmitting = true
         Task {
             defer { isSubmitting = false }
-            try? await model.households.saveRoutinePreferences(prefs)
-            onFinish()
+            do {
+                try await model.households.saveRoutinePreferences(prefs)
+                onFinish()
+            } catch {
+                errorMessage = error.localizedDescription
+                AccessibilityNotification.Announcement(error.localizedDescription).post()
+            }
         }
     }
 }

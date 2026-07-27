@@ -10,17 +10,17 @@ import Supabase
 final class RealHouseholdService: HouseholdService {
     private let client: SupabaseClient
     private let decoder = SupabaseCoding.restDecoder
+    private let operationQueue: OfflineOperationQueue
 
-    init(client: SupabaseClient) {
+    init(client: SupabaseClient, operationQueue: OfflineOperationQueue) {
         self.client = client
+        self.operationQueue = operationQueue
     }
 
     // MARK: - Reads
 
     func currentHousehold() async throws -> Household? {
-        guard client.auth.currentUser != nil else {
-            throw HouseholdServiceError.notSignedIn
-        }
+        _ = try await authenticatedUser()
         // RLS ("households active member read") already scopes this to the
         // caller's active memberships; Slice A is single-household, so the
         // oldest membership is "the" household.
@@ -35,6 +35,7 @@ final class RealHouseholdService: HouseholdService {
     }
 
     func members(householdId: UUID) async throws -> [HouseholdMember] {
+        let currentUser = try await authenticatedUser()
         struct MembershipRow: Decodable {
             let user_id: UUID
             let role: HouseholdMember.Role
@@ -54,21 +55,19 @@ final class RealHouseholdService: HouseholdService {
         // one active member in practice (create_household only inserts the
         // owner), so this gap doesn't bite until Slice B.
         var selfDisplayName: String?
-        if let selfId = client.auth.currentUser?.id {
-            struct ProfileRow: Decodable { let display_name: String }
-            if let response = try? await client
-                .from("user_profiles")
-                .select("display_name")
-                .eq("id", value: selfId)
-                .single()
-                .execute(),
-               let profile = try? decoder.decode(ProfileRow.self, from: response.data) {
-                selfDisplayName = profile.display_name
-            }
+        struct ProfileRow: Decodable { let display_name: String }
+        if let response = try? await client
+            .from("user_profiles")
+            .select("display_name")
+            .eq("id", value: currentUser.id)
+            .single()
+            .execute(),
+           let profile = try? decoder.decode(ProfileRow.self, from: response.data) {
+            selfDisplayName = profile.display_name
         }
 
         return rows.map { row in
-            let name = row.user_id == client.auth.currentUser?.id ? (selfDisplayName ?? "Caregiver") : "Caregiver"
+            let name = row.user_id == currentUser.id ? (selfDisplayName ?? "Caregiver") : "Caregiver"
             return HouseholdMember(userId: row.user_id, displayName: name, role: row.role, status: row.status)
         }
     }
@@ -86,6 +85,18 @@ final class RealHouseholdService: HouseholdService {
 
     // MARK: - Writes (write-path envelope)
 
+    /// The SDK's synchronous `currentUser` snapshot can briefly lag the
+    /// session write performed by `signIn`. Async service boundaries ask
+    /// for a validated session instead, which also refreshes expired tokens
+    /// before an RLS-protected request.
+    private func authenticatedUser() async throws -> User {
+        do {
+            return try await client.auth.session.user
+        } catch {
+            throw HouseholdServiceError.notSignedIn
+        }
+    }
+
     func createHousehold(name: String, timeZone: String) async throws -> Household {
         struct Payload: Encodable {
             let name: String
@@ -96,10 +107,11 @@ final class RealHouseholdService: HouseholdService {
             let household: HouseholdRef
         }
 
-        let result: CreateHouseholdResult = try await WritePath.send(
+        let result: CreateHouseholdResult = try await WritePath.sendStable(
             client: client,
             command: "create_household",
-            payload: Payload(name: name, time_zone: timeZone)
+            payload: Payload(name: name, time_zone: timeZone),
+            queue: operationQueue
         )
 
         // Re-fetch the authoritative row (status, default_capacity_mode,
@@ -126,10 +138,11 @@ final class RealHouseholdService: HouseholdService {
         // Mirrors the mock's client-side pre-check (US-023); the write
         // path re-validates server-side regardless (Scenario F).
         if case .exact(let birthDate) = birthInfo {
-            if birthDate > Date() {
+            let clock = household.clock
+            if !clock.ordered(birthDate, beforeOrSameAs: Date()) {
                 throw HouseholdServiceError.invalidPet("Birth date can't be in the future.")
             }
-            if let homecomingDate, homecomingDate < birthDate {
+            if let homecomingDate, !clock.ordered(birthDate, beforeOrSameAs: homecomingDate) {
                 throw HouseholdServiceError.invalidPet("Homecoming can't be before the birth date.")
             }
         }
@@ -149,16 +162,19 @@ final class RealHouseholdService: HouseholdService {
         }
 
         let payload: Payload
+        let householdTimeZone = TimeZone(identifier: household.timeZone) ?? .gmt
         switch birthInfo {
         case .exact(let birthDate):
             payload = Payload(
                 household_id: household.id,
                 name: name,
                 birth_date_kind: "exact",
-                birth_date: SupabaseCoding.dateOnlyString(birthDate),
+                birth_date: SupabaseCoding.dateOnlyString(birthDate, timeZone: householdTimeZone),
                 estimated_age_weeks: nil,
                 estimated_as_of_date: nil,
-                homecoming_date: homecomingDate.map(SupabaseCoding.dateOnlyString)
+                homecoming_date: homecomingDate.map {
+                    SupabaseCoding.dateOnlyString($0, timeZone: householdTimeZone)
+                }
             )
         case .estimated(let ageWeeks, let asOfDate):
             payload = Payload(
@@ -167,16 +183,31 @@ final class RealHouseholdService: HouseholdService {
                 birth_date_kind: "estimated",
                 birth_date: nil,
                 estimated_age_weeks: ageWeeks,
-                estimated_as_of_date: SupabaseCoding.dateOnlyString(asOfDate),
-                homecoming_date: homecomingDate.map(SupabaseCoding.dateOnlyString)
+                estimated_as_of_date: SupabaseCoding.dateOnlyString(asOfDate, timeZone: householdTimeZone),
+                homecoming_date: homecomingDate.map {
+                    SupabaseCoding.dateOnlyString($0, timeZone: householdTimeZone)
+                }
+            )
+        case .unknown:
+            payload = Payload(
+                household_id: household.id,
+                name: name,
+                birth_date_kind: "unknown",
+                birth_date: nil,
+                estimated_age_weeks: nil,
+                estimated_as_of_date: nil,
+                homecoming_date: homecomingDate.map {
+                    SupabaseCoding.dateOnlyString($0, timeZone: householdTimeZone)
+                }
             )
         }
 
         do {
-            let result: CreatePetResult = try await WritePath.send(
+            let result: CreatePetResult = try await WritePath.sendStable(
                 client: client,
                 command: "create_pet",
-                payload: payload
+                payload: payload,
+                queue: operationQueue
             )
             let response = try await client
                 .from("pets")
@@ -213,10 +244,17 @@ final class RealHouseholdService: HouseholdService {
             let routine_windows: HouseholdPreference
         }
         struct EmptyResult: Decodable {}
-        let _: EmptyResult = try await WritePath.send(
-            client: client,
-            command: "set_routine_preferences",
-            payload: Payload(household_id: household.id, routine_windows: preferences)
-        )
+        do {
+            let _: EmptyResult = try await WritePath.sendStable(
+                client: client,
+                command: "set_routine_preferences",
+                payload: Payload(household_id: household.id, routine_windows: preferences),
+                queue: operationQueue
+            )
+        } catch OfflineMutationError.queued {
+            // Preferences have no server-generated identity and are safe to
+            // consider locally saved while their exact command waits.
+            return
+        }
     }
 }

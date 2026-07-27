@@ -7,6 +7,10 @@ struct HomeView: View {
     @Environment(AppModel.self) private var model
     @State private var viewModel: HomeViewModel?
 
+    init(viewModel: HomeViewModel? = nil) {
+        _viewModel = State(initialValue: viewModel)
+    }
+
     var body: some View {
         ZStack {
             Color.pc.bg.ignoresSafeArea()
@@ -19,6 +23,8 @@ struct HomeView: View {
                 let created = HomeViewModel(model: model)
                 viewModel = created
                 await created.loadInitial()
+            } else if viewModel?.snapshot == nil {
+                await viewModel?.loadInitial()
             } else {
                 // Returning to the tab is a natural list update: completed
                 // items settle into the Completed section (doc 09 §8).
@@ -30,6 +36,7 @@ struct HomeView: View {
 
 private struct HomeContentView: View {
     @Bindable var viewModel: HomeViewModel
+    @State private var showSettings = false
 
     var body: some View {
         ScrollView {
@@ -37,6 +44,9 @@ private struct HomeContentView: View {
                 header
 
                 if let snapshot = viewModel.snapshot {
+                    if let errorMessage = viewModel.errorMessage {
+                        errorBanner(errorMessage)
+                    }
                     if snapshot.isEmpty {
                         allCaughtUp
                     } else {
@@ -46,6 +56,8 @@ private struct HomeContentView: View {
                     }
                 } else if viewModel.isLoading {
                     loadingSkeleton
+                } else if viewModel.hasInitialLoadFailure {
+                    loadFailure
                 }
             }
             .padding(.horizontal, PCSpacing.screenMargin)
@@ -60,12 +72,21 @@ private struct HomeContentView: View {
                 viewModel.applyCapacity(mode, scope: scope)
             }
         }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
         .sheet(item: $viewModel.detailItem) { item in
+            let isUnacceptedRecommendation = item.kind == .recommendation
+                && item.occurrenceId == nil
             PlanItemDetailSheet(
                 item: item,
                 meta: viewModel.meta(for: item),
                 state: viewModel.cardState(for: item),
-                allowsCompletion: item.section != .comingUp,
+                primaryActionTitle: isUnacceptedRecommendation ? "Add to today" : nil,
+                allowsCompletion: item.section != .comingUp && !isUnacceptedRecommendation,
+                onPrimaryAction: isUnacceptedRecommendation
+                    ? { try await viewModel.acceptRecommendation(item) }
+                    : nil,
                 onToggleComplete: { viewModel.toggleCompletion(of: item) }
             )
         }
@@ -75,6 +96,14 @@ private struct HomeContentView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("It joins today's plan for \(viewModel.pet?.name ?? "your puppy").")
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack {
+                Spacer()
+                quickAddButton
+            }
+            .padding(.horizontal, PCSpacing.screenMargin)
+            .padding(.vertical, PCSpacing.sm)
         }
     }
 
@@ -98,9 +127,10 @@ private struct HomeContentView: View {
                     .font(Font.pc.body.weight(.semibold))
                     .foregroundStyle(Color.pc.ink)
 
-                if let pet = viewModel.pet, !pet.isPreArrival() {
+                if let pet = viewModel.pet,
+                   !pet.isPreArrival(calendar: viewModel.householdCalendar) {
                     // Stage chip; opens HM-06 in a later slice.
-                    PCChip(text: pet.ageAndStageDisplay())
+                    PCChip(text: viewModel.petAgeAndStage ?? "")
                 }
 
                 Spacer()
@@ -111,12 +141,8 @@ private struct HomeContentView: View {
                     }
                 }
 
-                // Profile entry (ST-01 ships in Slice B); sign-out keeps the
-                // mock loop testable.
-                Menu {
-                    Button("Sign out", role: .destructive) {
-                        viewModel.signOut()
-                    }
+                Button {
+                    showSettings = true
                 } label: {
                     Image(systemName: "person.crop.circle")
                         .font(.title3)
@@ -126,7 +152,7 @@ private struct HomeContentView: View {
                 .accessibilityLabel("Profile and settings")
             }
 
-            if let pet = viewModel.pet, let days = pet.daysUntilHomecoming() {
+            if viewModel.pet != nil, let days = viewModel.daysUntilHomecoming {
                 // Pre-arrival variant: countdown replaces the age/stage line.
                 Text(days == 1 ? "Coming home tomorrow" : "Coming home in \(days) days")
                     .font(Font.pc.display)
@@ -235,6 +261,67 @@ private struct HomeContentView: View {
         }
         .redacted(reason: .placeholder)
         .accessibilityLabel("Loading today's plan")
+    }
+
+    private var loadFailure: some View {
+        EmptyStateView(
+            systemImage: "wifi.exclamationmark",
+            message: viewModel.errorMessage
+                ?? "Today's plan couldn't be loaded. Your data has not been changed.",
+            primaryActionTitle: "Try again",
+            primaryAction: { viewModel.retryInitialLoad() }
+        )
+        .padding(.top, PCSpacing.xl)
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: PCSpacing.md) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(Color.pc.danger)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(Font.pc.secondary)
+                .foregroundStyle(Color.pc.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: PCSpacing.sm)
+            Button {
+                viewModel.clearError()
+            } label: {
+                Image(systemName: "xmark")
+                    .frame(width: PCMetrics.minTouchTarget, height: PCMetrics.minTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.pc.inkSecondary)
+            .accessibilityLabel("Dismiss error")
+        }
+        .padding(PCSpacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: PCRadius.input, style: .continuous)
+                .fill(Color.pc.attentionBg)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: PCRadius.input, style: .continuous)
+                .strokeBorder(Color.pc.danger.opacity(0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+    }
+
+    private var quickAddButton: some View {
+        Button {
+            viewModel.showAddTask = true
+        } label: {
+            Label("Add task", systemImage: "plus")
+                .font(Font.pc.body.weight(.semibold))
+                .foregroundStyle(Color.pc.onPrimary)
+                .padding(.horizontal, PCSpacing.lg)
+                .frame(minHeight: 50)
+                .background(
+                    Capsule().fill(Color.pc.primary)
+                        .shadow(color: Color.pc.ink.opacity(0.14), radius: 12, y: 5)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Adds a one-time task to today's plan")
     }
 }
 

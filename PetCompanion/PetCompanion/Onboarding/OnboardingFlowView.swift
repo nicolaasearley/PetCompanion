@@ -9,11 +9,13 @@ enum OnboardingRoute: Hashable {
     case createHousehold
     case addPet
     case routineBasics
+    case confirmEmail(String)
 }
 
 struct OnboardingFlowView: View {
     @Environment(AppModel.self) private var model
     @State private var path: [OnboardingRoute] = []
+    @State private var routingError: String?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -24,7 +26,11 @@ struct OnboardingFlowView: View {
             .navigationDestination(for: OnboardingRoute.self) { route in
                 switch route {
                 case .createAccount:
-                    AuthFormView(mode: .createAccount, onAuthenticated: routeAfterAuth)
+                    AuthFormView(
+                        mode: .createAccount,
+                        onAuthenticated: routeAfterAuth,
+                        onConfirmationRequired: { path.append(.confirmEmail($0)) }
+                    )
                 case .signIn:
                     AuthFormView(mode: .signIn, onAuthenticated: routeAfterAuth)
                 case .createHousehold:
@@ -33,8 +39,30 @@ struct OnboardingFlowView: View {
                     AddPetView(onContinue: { path.append(.routineBasics) })
                 case .routineBasics:
                     RoutineBasicsView(onFinish: { model.finishOnboarding() })
+                case .confirmEmail(let email):
+                    EmailConfirmationView(
+                        email: email,
+                        onSignIn: { path.append(.signIn) }
+                    )
                 }
             }
+        }
+        .task {
+            guard path.isEmpty, let destination = model.consumePendingOnboardingDestination() else {
+                return
+            }
+            apply(destination)
+        }
+        .alert(
+            "Setup couldn't continue",
+            isPresented: Binding(
+                get: { routingError != nil },
+                set: { if !$0 { routingError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(routingError ?? "Try again.")
         }
     }
 
@@ -42,12 +70,49 @@ struct OnboardingFlowView: View {
     /// (Pending-invitation routing to ON-05 is Slice B.)
     private func routeAfterAuth(_ user: UserAccount) {
         Task {
-            let destination = await model.didAuthenticate(user)
-            if destination == .createHousehold {
-                path.append(.createHousehold)
+            do {
+                apply(try await model.didAuthenticate(user))
+            } catch {
+                routingError = error.localizedDescription
             }
-            // .main: RootView switches to the tabs automatically.
         }
+    }
+
+    private func apply(_ destination: AppModel.PostAuthDestination) {
+        switch destination {
+        case .main:
+            break
+        case .createHousehold:
+            path = [.createHousehold]
+        case .addPet:
+            path = [.addPet]
+        }
+    }
+}
+
+struct EmailConfirmationView: View {
+    let email: String
+    let onSignIn: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PCSpacing.xxl) {
+            Image(systemName: "envelope.badge")
+                .font(.system(size: 38, weight: .light))
+                .foregroundStyle(Color.pc.primary)
+                .accessibilityHidden(true)
+            Text("Check your email")
+                .font(Font.pc.title)
+                .foregroundStyle(Color.pc.ink)
+                .accessibilityAddTraits(.isHeader)
+            Text("We sent a confirmation link to \(email). Open it, then return here and sign in.")
+                .font(Font.pc.body)
+                .foregroundStyle(Color.pc.inkSecondary)
+            PrimaryButton(title: "I've confirmed — sign in", action: onSignIn)
+            Spacer()
+        }
+        .padding(PCSpacing.screenMargin)
+        .background(Color.pc.bg.ignoresSafeArea())
+        .navigationBarBackButtonHidden()
     }
 }
 

@@ -5,11 +5,6 @@ import Supabase
 /// implementations — Slice A WP-2 (doc 06 §6, §11).
 @MainActor
 enum SupabaseClientProvider {
-    /// One client per process, configured from `BackendConfig.local`. The
-    /// SDK owns session persistence (Keychain-backed) and token refresh
-    /// internally, so a single long-lived instance is the right shape.
-    static let shared: SupabaseClient = makeClient(config: .local)
-
     static func makeClient(config: BackendConfig) -> SupabaseClient {
         SupabaseClient(supabaseURL: config.url, supabaseKey: config.anonKey)
     }
@@ -28,8 +23,8 @@ enum SupabaseClientProvider {
     /// the user has a session. `GET /auth/v1/health` requires no table
     /// grants and no session, and answers the same question ("is the
     /// local stack up") cheaply.
-    static func isLocalStackReachable(
-        config: BackendConfig = .local,
+    static func isReachable(
+        config: BackendConfig,
         timeout: TimeInterval = 2.5
     ) async -> Bool {
         var request = URLRequest(url: config.url.appendingPathComponent("auth/v1/health"))

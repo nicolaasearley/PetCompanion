@@ -19,7 +19,7 @@ enum SupabaseCoding {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
+        formatter.timeZone = .gmt
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
@@ -85,23 +85,28 @@ enum SupabaseCoding {
     /// `homecoming_date` write-path payload fields (DM §8.2 — calendar
     /// dates, not instants; formatted in the device's current calendar so
     /// the day the caregiver picked in the date picker is the day sent).
-    nonisolated static func dateOnlyString(_ date: Date) -> String {
-        dateOnlyFormatter.string(from: date)
+    nonisolated static func dateOnlyString(_ date: Date, timeZone: TimeZone = .gmt) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 
     /// `recorded_at` on the command envelope (write-path §6/§11).
     nonisolated static func iso8601Now() -> String {
         fractionalSecondsFormatter.string(from: Date())
     }
+
+    nonisolated static func iso8601String(_ date: Date) -> String {
+        fractionalSecondsFormatter.string(from: date)
+    }
 }
 
 // MARK: - Write-path command envelope (supabase/functions/write-path)
 
-/// Mirrors `packages/write-path/src/envelope.ts` `CommandEnvelope`. Kept
-/// minimal and file-local — the client only ever sends `create_household`
-/// and `create_pet` in Slice A WP-2; `set_routine_preferences` is a
-/// server-side stub (WP-1) so it is not sent through this path yet (see
-/// `RealHouseholdService.saveRoutinePreferences`).
+/// Mirrors `packages/write-path/src/envelope.ts` `CommandEnvelope`.
 struct CommandEnvelope<Payload: Encodable>: Encodable {
     let command: String
     let payload: Payload
@@ -156,12 +161,13 @@ enum WritePath {
         client: SupabaseClient,
         command: String,
         payload: Payload,
+        idempotencyKey: String = UUID().uuidString,
         decoder: JSONDecoder = SupabaseCoding.restDecoder
     ) async throws -> Result {
         let envelope = CommandEnvelope(
             command: command,
             payload: payload,
-            client_idempotency_key: UUID().uuidString,
+            client_idempotency_key: idempotencyKey,
             recorded_at: SupabaseCoding.iso8601Now(),
             effective_at: nil
         )
@@ -180,5 +186,133 @@ enum WritePath {
             }
             throw WritePathError.malformedResponse
         }
+    }
+
+    /// Retains one idempotency key for the same pending command payload
+    /// across transient failures and app relaunches. The key is cleared only
+    /// after the server confirms success.
+    static func sendStable<Payload: Encodable, Result: Decodable>(
+        client: SupabaseClient,
+        command: String,
+        payload: Payload,
+        decoder: JSONDecoder = SupabaseCoding.restDecoder,
+        keyStore: PendingCommandKeyStore? = nil,
+        queue: OfflineOperationQueue? = nil
+    ) async throws -> Result {
+        if let queue {
+            do {
+                let data = try await queue.submit(command: command, payload: payload)
+                let success = try decoder.decode(CommandSuccessBody<Result>.self, from: data)
+                return success.result
+            } catch OfflineMutationError.rejected(_, let code, let message) {
+                throw WritePathError.server(code: code, message: message)
+            }
+        }
+
+        let resolvedKeyStore = keyStore ?? .shared
+        let operation = try resolvedKeyStore.operationFingerprint(command: command, payload: payload)
+        let key = resolvedKeyStore.idempotencyKey(for: operation)
+        do {
+            let result: Result = try await send(
+                client: client,
+                command: command,
+                payload: payload,
+                idempotencyKey: key,
+                decoder: decoder
+            )
+            resolvedKeyStore.remove(operation: operation)
+            return result
+        } catch {
+            throw error
+        }
+    }
+}
+
+/// Raw replay transport for the disk-backed operation queue. It sends the
+/// original idempotency key and timestamps captured when the user acted.
+@MainActor
+final class SupabaseWritePathTransport: OfflineOperationTransport {
+    private let client: SupabaseClient
+
+    init(client: SupabaseClient) {
+        self.client = client
+    }
+
+    func execute(_ operation: OfflineOperation) async throws -> Data {
+        let envelope = CommandEnvelope(
+            command: operation.command,
+            payload: operation.payload,
+            client_idempotency_key: operation.clientIdempotencyKey,
+            recorded_at: operation.recordedAt,
+            effective_at: operation.effectiveAt
+        )
+        do {
+            let data: Data = try await client.functions.invoke(
+                "write-path",
+                options: FunctionInvokeOptions(body: envelope)
+            ) { data, _ in data }
+            struct Acknowledgement: Decodable { let ok: Bool }
+            guard let acknowledgement = try? JSONDecoder().decode(Acknowledgement.self, from: data),
+                  acknowledgement.ok
+            else {
+                throw OfflineTransportError.rejected(
+                    code: "MALFORMED_RESPONSE",
+                    message: "The service returned an unreadable response."
+                )
+            }
+            return data
+        } catch FunctionsError.httpError(let status, let data) {
+            let failure = try? SupabaseCoding.restDecoder.decode(CommandFailureBody.self, from: data)
+            let code = failure?.code ?? "HTTP_\(status)"
+            let message = failure?.message ?? "The service couldn't save this change."
+            if status == 408 || status == 429 || status >= 500 {
+                throw OfflineTransportError.unavailable(code: code, message: message)
+            }
+            throw OfflineTransportError.rejected(code: code, message: message)
+        } catch let error as OfflineTransportError {
+            throw error
+        } catch {
+            throw OfflineTransportError.unavailable(
+                code: "NETWORK_UNAVAILABLE",
+                message: error.localizedDescription
+            )
+        }
+    }
+}
+
+/// Durable bookkeeping for retry-safe command identities. This is the
+/// foundation for the full FIFO offline operation queue; it already closes
+/// the correctness hole where a network retry generated a new key.
+@MainActor
+final class PendingCommandKeyStore {
+    static let shared = PendingCommandKeyStore()
+
+    private let defaults: UserDefaults
+    private let prefix = "petcompanion.pending-command."
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func operationFingerprint<Payload: Encodable>(command: String, payload: Payload) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let payloadData = try encoder.encode(payload)
+        let raw = Data("\(command)|".utf8) + payloadData
+        return raw.base64EncodedString()
+    }
+
+    func idempotencyKey(for operation: String) -> String {
+        let storageKey = prefix + operation
+        if let existing = defaults.string(forKey: storageKey) {
+            return existing
+        }
+        let created = UUID().uuidString
+        defaults.set(created, forKey: storageKey)
+        return created
+    }
+
+    func remove(operation: String) {
+        defaults.removeObject(forKey: prefix + operation)
     }
 }

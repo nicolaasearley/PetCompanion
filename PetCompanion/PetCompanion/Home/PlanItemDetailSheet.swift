@@ -9,10 +9,14 @@ struct PlanItemDetailSheet: View {
     let item: PlanItem
     let meta: String?
     let state: PlanItemCard.CardState
+    var primaryActionTitle: String? = nil
     let allowsCompletion: Bool
+    var onPrimaryAction: (() async throws -> Void)? = nil
     let onToggleComplete: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var isWorking = false
+    @State private var actionError: String?
 
     private var isCompleted: Bool {
         if case .completed = state { return true }
@@ -69,9 +73,31 @@ struct PlanItemDetailSheet: View {
                 )
             }
 
+            if let actionError {
+                Label(actionError, systemImage: "exclamationmark.triangle")
+                    .font(Font.pc.secondary)
+                    .foregroundStyle(Color.pc.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .combine)
+            }
+
             Spacer(minLength: 0)
 
-            if allowsCompletion {
+            if let primaryActionTitle, let onPrimaryAction {
+                PrimaryButton(title: primaryActionTitle, isLoading: isWorking) {
+                    isWorking = true
+                    actionError = nil
+                    Task {
+                        do {
+                            try await onPrimaryAction()
+                            dismiss()
+                        } catch {
+                            actionError = error.localizedDescription
+                            isWorking = false
+                        }
+                    }
+                }
+            } else if allowsCompletion {
                 PrimaryButton(title: isCompleted ? "Undo completion" : "Mark complete") {
                     onToggleComplete()
                     dismiss()
@@ -104,7 +130,9 @@ struct PlanItemDetailSheet: View {
                 ),
                 meta: "Training · ~3–5 min",
                 state: .normal,
-                allowsCompletion: true,
+                primaryActionTitle: "Add to today",
+                allowsCompletion: false,
+                onPrimaryAction: {},
                 onToggleComplete: {}
             )
         }

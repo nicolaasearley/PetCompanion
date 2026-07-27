@@ -15,9 +15,13 @@ protocol PlanService: AnyObject {
         resectioningCompleted: Bool
     ) async throws -> PlanSnapshot
 
-    /// Completes an item (optimistically confirmed). Completing a
-    /// recommendation promotes it to a real occurrence first (doc 10 §10.3).
+    /// Completes an occurrence-backed item (optimistically confirmed).
+    /// Recommendations must be accepted first so that intent is explicit.
     func completeItem(itemId: UUID, petId: UUID, on date: Date) async throws -> PlanSnapshot
+
+    /// Promotes an optional recommendation into a pending scheduled
+    /// occurrence. Acceptance and completion remain separate user intents.
+    func acceptRecommendation(itemId: UUID, petId: UUID, on date: Date) async throws -> PlanSnapshot
 
     /// Appends an `undo_complete` disposition and returns the occurrence to
     /// pending (US-033).
@@ -41,11 +45,8 @@ enum PlanServiceError: LocalizedError {
     case notSignedIn
     case planNotFound
     case itemNotFound
-    /// A recommendation item was acted on before it has an `occurrence_id`
-    /// — i.e. before it's been accepted. Slice A has no accept/promote
-    /// write-path command yet (that's engine/WP-4 server work), so this is
-    /// surfaced as a plain, non-crashing error instead of a fabricated
-    /// promotion flow (`RealPlanService`).
+    /// A recommendation item was sent to completion before the separate
+    /// accept/promote command created its occurrence.
     case recommendationNotYetActionable
 
     var errorDescription: String? {
@@ -53,7 +54,7 @@ enum PlanServiceError: LocalizedError {
         case .notSignedIn: "Sign in to continue."
         case .planNotFound: "That plan couldn't be loaded. Pull to refresh."
         case .itemNotFound: "That item couldn't be found. Pull to refresh."
-        case .recommendationNotYetActionable: "Accepting recommendations isn't available yet. Try again soon."
+        case .recommendationNotYetActionable: "Add this recommendation to today before completing it."
         }
     }
 }
@@ -78,6 +79,10 @@ final class MockPlanService: PlanService {
 
     func completeItem(itemId: UUID, petId: UUID, on date: Date) async throws -> PlanSnapshot {
         try backend.complete(itemId: itemId, petId: petId, date: date)
+    }
+
+    func acceptRecommendation(itemId: UUID, petId: UUID, on date: Date) async throws -> PlanSnapshot {
+        try backend.acceptRecommendation(itemId: itemId, petId: petId, date: date)
     }
 
     func undoCompletion(itemId: UUID, petId: UUID, on date: Date) async throws -> PlanSnapshot {

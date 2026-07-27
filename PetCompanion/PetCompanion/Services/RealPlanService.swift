@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Supabase
 
 /// Supabase-backed implementation of `PlanService` — Slice A WP-3/WP-4
@@ -12,17 +13,17 @@ import Supabase
 /// and quick-add all route through the single write-path edge function via
 /// the shared `WritePath` client (`SupabaseCoding.swift`).
 ///
-/// Slice A limitation (call out from the work order, not discovered late):
-/// recommendation items carry `occurrence_id == nil` until accepted, and
-/// there is no accept/promote write-path command yet — that's engine/WP-4
-/// server work. `completeItem`/`undoCompletion` on such an item throw
-/// `PlanServiceError.recommendationNotYetActionable` (a plain, non-crashing
-/// error `HomeViewModel` already surfaces via `errorMessage`) rather than
-/// inventing a promotion flow.
+/// Recommendations carry `occurrence_id == nil` until the caregiver
+/// explicitly accepts them. `acceptRecommendation` promotes one to a
+/// pending scheduled occurrence; completion remains a separate action.
 @MainActor
 final class RealPlanService: PlanService {
     private let client: SupabaseClient
     private let decoder = SupabaseCoding.restDecoder
+    private let cache: PlanSnapshotCache
+    private let operationQueue: OfflineOperationQueue
+    private let notifications: any LocalNotificationServicing
+    private let logger = Logger(subsystem: "com.nic.petcompanion", category: "plan")
 
     /// Slice A is single-pet/single-open-day: the last plan fetched or
     /// regenerated is cached here so `completeItem`/`undoCompletion` can
@@ -32,8 +33,16 @@ final class RealPlanService: PlanService {
     /// a full regenerate after every action.
     private var cachedSnapshot: PlanSnapshot?
 
-    init(client: SupabaseClient) {
+    init(
+        client: SupabaseClient,
+        operationQueue: OfflineOperationQueue,
+        notifications: any LocalNotificationServicing,
+        cache: PlanSnapshotCache? = nil
+    ) {
         self.client = client
+        self.operationQueue = operationQueue
+        self.notifications = notifications
+        self.cache = cache ?? PlanSnapshotCache()
     }
 
     // MARK: - PlanService
@@ -43,27 +52,28 @@ final class RealPlanService: PlanService {
         on date: Date,
         resectioningCompleted: Bool
     ) async throws -> PlanSnapshot {
-        guard client.auth.currentUser != nil else { throw PlanServiceError.notSignedIn }
+        do {
+            _ = try await client.auth.session
+        } catch {
+            throw PlanServiceError.notSignedIn
+        }
 
-        if resectioningCompleted {
-            // A natural list update: regenerating re-sections completed
-            // items into Completed (the engine assigns `section` from each
-            // occurrence's current state, `_shared/engine.mjs`).
+        do {
+            if resectioningCompleted {
+                let snapshot = try await regenerate(petId: petId, capacityOverride: nil)
+                return await retainAndReconcile(snapshot)
+            }
+            if let existing = try await readPersistedPlan(petId: petId, date: date) {
+                return await retainAndReconcile(existing)
+            }
             let snapshot = try await regenerate(petId: petId, capacityOverride: nil)
-            cachedSnapshot = snapshot
-            return snapshot
+            return await retainAndReconcile(snapshot)
+        } catch {
+            logger.error("Plan refresh failed; attempting last-known-good cache: \(error.localizedDescription, privacy: .public)")
+            guard let fallback = cache.load(petId: petId) else { throw error }
+            cachedSnapshot = fallback
+            return fallback
         }
-
-        // A plain fetch never re-sections (doc 09 §8) — read what's already
-        // persisted rather than regenerate. Only regenerate when no plan
-        // exists yet for this pet/day (first-ever load).
-        if let existing = try await readPersistedPlan(petId: petId, date: date) {
-            cachedSnapshot = existing
-            return existing
-        }
-        let snapshot = try await regenerate(petId: petId, capacityOverride: nil)
-        cachedSnapshot = snapshot
-        return snapshot
     }
 
     func completeItem(itemId: UUID, petId: UUID, on date: Date) async throws -> PlanSnapshot {
@@ -88,13 +98,27 @@ final class RealPlanService: PlanService {
             let disposition: DispositionResult
         }
 
-        let result: Result = try await WritePath.send(
-            client: client,
-            command: "complete_occurrence",
-            payload: Payload(occurrence_id: occurrenceId)
-        )
+        let result: Result
+        do {
+            result = try await WritePath.sendStable(
+                client: client,
+                command: "complete_occurrence",
+                payload: Payload(occurrence_id: occurrenceId),
+                queue: operationQueue
+            )
+        } catch OfflineMutationError.queued(let operationId) {
+            let queued = try applyQueuedOccurrenceMutation(
+                itemId: itemId,
+                occurrenceId: occurrenceId,
+                newState: .completed,
+                action: .complete,
+                operationId: operationId
+            )
+            await notifications.reconcile(snapshot: queued)
+            return queued
+        }
 
-        return try applyOccurrenceMutation(
+        let snapshot = try applyOccurrenceMutation(
             occurrenceId: occurrenceId,
             newState: .completed,
             disposition: Disposition(
@@ -107,6 +131,59 @@ final class RealPlanService: PlanService {
                 superseded: result.disposition.superseded ?? false
             )
         )
+        cache.store(snapshot)
+        await notifications.reconcile(snapshot: snapshot)
+        return snapshot
+    }
+
+    func acceptRecommendation(itemId: UUID, petId: UUID, on date: Date) async throws -> PlanSnapshot {
+        guard let snapshot = cachedSnapshot,
+              let item = snapshot.items.first(where: { $0.id == itemId }),
+              item.kind == .recommendation
+        else { throw PlanServiceError.itemNotFound }
+
+        if item.occurrenceId != nil {
+            return snapshot
+        }
+
+        struct Payload: Encodable {
+            let plan_item_id: UUID
+            let complete: Bool
+            let pinned: Bool
+        }
+        struct Result: Decodable {
+            struct PlanItemResult: Decodable {
+                let id: UUID
+                let occurrence_id: UUID
+            }
+            let plan_item: PlanItemResult
+        }
+        do {
+            let _: Result = try await WritePath.sendStable(
+                client: client,
+                command: "accept_recommendation",
+                payload: Payload(plan_item_id: itemId, complete: false, pinned: false),
+                queue: operationQueue
+            )
+        } catch OfflineMutationError.queued {
+            var queued = snapshot
+            guard let index = queued.items.firstIndex(where: { $0.id == itemId }) else {
+                throw PlanServiceError.itemNotFound
+            }
+            queued.items[index].displayState = .queued
+            cachedSnapshot = queued
+            cache.store(queued)
+            await notifications.reconcile(snapshot: queued)
+            return queued
+        }
+
+        guard let refreshed = try await readPersistedPlan(petId: petId, date: date) else {
+            throw PlanServiceError.planNotFound
+        }
+        cachedSnapshot = refreshed
+        cache.store(refreshed)
+        await notifications.reconcile(snapshot: refreshed)
+        return refreshed
     }
 
     func undoCompletion(itemId: UUID, petId: UUID, on date: Date) async throws -> PlanSnapshot {
@@ -122,13 +199,27 @@ final class RealPlanService: PlanService {
         }
         struct Result: Decodable { let disposition: DispositionResult }
 
-        let result: Result = try await WritePath.send(
-            client: client,
-            command: "undo_completion",
-            payload: Payload(occurrence_id: occurrenceId)
-        )
+        let result: Result
+        do {
+            result = try await WritePath.sendStable(
+                client: client,
+                command: "undo_completion",
+                payload: Payload(occurrence_id: occurrenceId),
+                queue: operationQueue
+            )
+        } catch OfflineMutationError.queued(let operationId) {
+            let queued = try applyQueuedOccurrenceMutation(
+                itemId: itemId,
+                occurrenceId: occurrenceId,
+                newState: .pending,
+                action: .undoComplete,
+                operationId: operationId
+            )
+            await notifications.reconcile(snapshot: queued)
+            return queued
+        }
 
-        return try applyOccurrenceMutation(
+        let snapshot = try applyOccurrenceMutation(
             occurrenceId: occurrenceId,
             newState: .pending,
             disposition: Disposition(
@@ -141,6 +232,9 @@ final class RealPlanService: PlanService {
                 superseded: false
             )
         )
+        cache.store(snapshot)
+        await notifications.reconcile(snapshot: snapshot)
+        return snapshot
     }
 
     func setCapacity(
@@ -149,16 +243,38 @@ final class RealPlanService: PlanService {
         petId: UUID,
         on date: Date
     ) async throws -> PlanSnapshot {
-        // Residual TODO (see report): `generate-plan` accepts
-        // `capacity_override` for one regeneration, but there is no
-        // write-path command yet to persist a new household
-        // `default_capacity_mode` (it's only set at `create_household`
-        // time). `scope` therefore always behaves like `.todayOnly`
-        // server-side today, regardless of what the sheet says — the sheet
-        // UI itself keeps working (doc 14 HM-04), the "every day" choice
-        // just isn't durable yet.
+        if scope == .householdDefault {
+            guard let householdId = cachedSnapshot?.plan.householdId else {
+                throw PlanServiceError.planNotFound
+            }
+            struct Payload: Encodable {
+                let household_id: UUID
+                let default_capacity_mode: String
+            }
+            struct Result: Decodable {
+                let household_id: UUID
+                let default_capacity_mode: String
+            }
+            do {
+                let _: Result = try await WritePath.sendStable(
+                    client: client,
+                    command: "set_default_capacity",
+                    payload: Payload(
+                        household_id: householdId,
+                        default_capacity_mode: mode.rawValue
+                    ),
+                    queue: operationQueue
+                )
+            } catch OfflineMutationError.queued {
+                let queued = try locallyApplyCapacity(mode)
+                await notifications.reconcile(snapshot: queued)
+                return queued
+            }
+        }
         let snapshot = try await regenerate(petId: petId, capacityOverride: mode)
         cachedSnapshot = snapshot
+        cache.store(snapshot)
+        await notifications.reconcile(snapshot: snapshot)
         return snapshot
     }
 
@@ -172,23 +288,34 @@ final class RealPlanService: PlanService {
         }
         struct EmptyResult: Decodable {}
 
-        let _: EmptyResult = try await WritePath.send(
-            client: client,
-            command: "create_task",
-            payload: Payload(
-                pet_id: petId,
-                title: title,
-                local_due_date: SupabaseCoding.dateOnlyString(date),
-                time_policy: "anytime",
-                assignment: "anyone"
+        let timeZone = cachedSnapshot
+            .flatMap { TimeZone(identifier: $0.plan.timeZoneSnapshot) } ?? .gmt
+        do {
+            let _: EmptyResult = try await WritePath.sendStable(
+                client: client,
+                command: "create_task",
+                payload: Payload(
+                    pet_id: petId,
+                    title: title,
+                    local_due_date: SupabaseCoding.dateOnlyString(date, timeZone: timeZone),
+                    time_policy: "anytime",
+                    assignment: "anyone"
+                ),
+                queue: operationQueue
             )
-        )
+        } catch OfflineMutationError.queued {
+            let queued = try locallyAddQueuedTask(title: title, petId: petId, date: date)
+            await notifications.reconcile(snapshot: queued)
+            return queued
+        }
 
         // `create_task` inserts the occurrence directly; folding it into
         // the visible plan needs the same regeneration a natural list
         // update would trigger.
         let snapshot = try await regenerate(petId: petId, capacityOverride: nil)
         cachedSnapshot = snapshot
+        cache.store(snapshot)
+        await notifications.reconcile(snapshot: snapshot)
         return snapshot
     }
 
@@ -236,12 +363,26 @@ final class RealPlanService: PlanService {
     // MARK: - Direct reads (RLS "active member read" policies)
 
     private func readPersistedPlan(petId: UUID, date: Date) async throws -> PlanSnapshot? {
-        let dateString = SupabaseCoding.dateOnlyString(date)
+        // Deliberately does NOT filter by an exact `local_date` string built
+        // from the device's calendar/time zone: `plans.local_date` is
+        // computed server-side from the *household's* `time_zone_snapshot`
+        // (`household_current_local_date`, `write_path_generation_context`),
+        // which routinely disagrees with the simulator/device's local date
+        // (caught in manual verification: a household on `Europe/Stockholm`
+        // had `local_date` one calendar day ahead of the host machine). An
+        // exact-match filter against a device-local string would silently
+        // miss the row and fall through to a full regenerate on every plain
+        // fetch — never actually reading, always resectioning. Slice A has
+        // no day-close cron (`close_plans_for_date` isn't scheduled yet), so
+        // there is at most one meaningfully "current" plan per pet: the
+        // latest `open` one.
         let planResponse = try await client
             .from("plans")
             .select()
             .eq("pet_id", value: petId)
-            .eq("local_date", value: dateString)
+            .eq("status", value: Plan.Status.open.rawValue)
+            .order("local_date", ascending: false)
+            .order("generated_at", ascending: false)
             .limit(1)
             .execute()
         let plans = try decoder.decode([Plan].self, from: planResponse.data)
@@ -294,6 +435,13 @@ final class RealPlanService: PlanService {
 
     // MARK: - Local reconciliation helpers
 
+    private func retainAndReconcile(_ snapshot: PlanSnapshot) async -> PlanSnapshot {
+        cachedSnapshot = snapshot
+        cache.store(snapshot)
+        await notifications.reconcile(snapshot: snapshot)
+        return snapshot
+    }
+
     private func resolvedOccurrenceId(forItem itemId: UUID) throws -> UUID {
         guard let snapshot = cachedSnapshot, let item = snapshot.items.first(where: { $0.id == itemId }) else {
             throw PlanServiceError.itemNotFound
@@ -345,6 +493,97 @@ final class RealPlanService: PlanService {
         snapshot.dispositions.append(disposition)
 
         cachedSnapshot = snapshot
+        return snapshot
+    }
+
+    private func applyQueuedOccurrenceMutation(
+        itemId: UUID,
+        occurrenceId: UUID,
+        newState: TaskOccurrence.State,
+        action: Disposition.Action,
+        operationId: UUID
+    ) throws -> PlanSnapshot {
+        guard var snapshot = cachedSnapshot,
+              let itemIndex = snapshot.items.firstIndex(where: { $0.id == itemId }),
+              let occurrenceIndex = snapshot.occurrences.firstIndex(where: { $0.id == occurrenceId })
+        else { throw PlanServiceError.itemNotFound }
+
+        snapshot.items[itemIndex].displayState = .queued
+        snapshot.occurrences[occurrenceIndex].state = newState
+        snapshot.occurrences[occurrenceIndex].revision += 1
+        if action == .undoComplete {
+            for index in snapshot.dispositions.indices
+            where snapshot.dispositions[index].occurrenceId == occurrenceId
+                && snapshot.dispositions[index].action == .complete {
+                snapshot.dispositions[index].superseded = true
+            }
+        }
+        snapshot.dispositions.append(
+            Disposition(
+                occurrenceId: occurrenceId,
+                action: action,
+                actorUserId: client.auth.currentUser?.id ?? UUID(),
+                clientIdempotencyKey: operationId.uuidString
+            )
+        )
+        cachedSnapshot = snapshot
+        cache.store(snapshot)
+        return snapshot
+    }
+
+    private func locallyApplyCapacity(_ mode: CapacityMode) throws -> PlanSnapshot {
+        guard var snapshot = cachedSnapshot else { throw PlanServiceError.planNotFound }
+        snapshot.plan.capacityModeApplied = mode
+        let recommendations = snapshot.items.filter {
+            $0.kind == .recommendation && $0.occurrenceId == nil
+        }
+        let visibleIds = Set(
+            recommendations
+                .sorted { $0.priorityTier < $1.priorityTier }
+                .prefix(mode.recommendationBudget)
+                .map(\.id)
+        )
+        snapshot.items.removeAll {
+            $0.kind == .recommendation
+                && $0.occurrenceId == nil
+                && !visibleIds.contains($0.id)
+        }
+        for index in snapshot.items.indices where snapshot.items[index].kind == .recommendation {
+            snapshot.items[index].displayState = .queued
+        }
+        cachedSnapshot = snapshot
+        cache.store(snapshot)
+        return snapshot
+    }
+
+    private func locallyAddQueuedTask(title: String, petId: UUID, date: Date) throws -> PlanSnapshot {
+        guard var snapshot = cachedSnapshot else { throw PlanServiceError.planNotFound }
+        let occurrence = TaskOccurrence(
+            occurrenceKey: "queued:\(UUID().uuidString)",
+            householdId: snapshot.plan.householdId,
+            petId: petId,
+            localDueDate: date,
+            obligationClass: .scheduled,
+            origin: .userCreated
+        )
+        snapshot.occurrences.append(occurrence)
+        snapshot.items.append(
+            PlanItem(
+                planId: snapshot.plan.id,
+                itemKey: "queued:\(occurrence.id.uuidString)",
+                kind: .obligation,
+                occurrenceId: occurrence.id,
+                title: title,
+                category: .household,
+                obligationClass: .scheduled,
+                priorityTier: .p2,
+                section: .today,
+                timeWindow: .anytime,
+                displayState: .queued
+            )
+        )
+        cachedSnapshot = snapshot
+        cache.store(snapshot)
         return snapshot
     }
 }

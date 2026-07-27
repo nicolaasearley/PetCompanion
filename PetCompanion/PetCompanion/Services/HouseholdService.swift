@@ -72,10 +72,11 @@ final class MockHouseholdService: HouseholdService {
         // Server-side guard mirroring doc 10 §7.5 validation; the form
         // validates first with inline explanations (US-023).
         if case .exact(let birthDate) = birthInfo {
-            if birthDate > Date() {
+            let clock = backend.household?.clock ?? HouseholdClock(timeZone: .current)
+            if !clock.ordered(birthDate, beforeOrSameAs: Date()) {
                 throw HouseholdServiceError.invalidPet("Birth date can't be in the future.")
             }
-            if let homecomingDate, homecomingDate < birthDate {
+            if let homecomingDate, !clock.ordered(birthDate, beforeOrSameAs: homecomingDate) {
                 throw HouseholdServiceError.invalidPet("Homecoming can't be before the birth date.")
             }
         }

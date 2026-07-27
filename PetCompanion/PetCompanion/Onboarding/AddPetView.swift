@@ -13,6 +13,7 @@ struct AddPetView: View {
     enum BirthKind: Hashable {
         case exact
         case estimated
+        case unknown
     }
 
     enum HomeStatus: Hashable {
@@ -32,6 +33,10 @@ struct AddPetView: View {
     @State private var birthError: String?
     @State private var homecomingError: String?
     @State private var errorMessage: String?
+
+    private var clock: HouseholdClock {
+        model.household?.clock ?? HouseholdClock(timeZone: .current)
+    }
 
     var body: some View {
         ScrollView {
@@ -114,6 +119,17 @@ struct AddPetView: View {
                 .padding(.leading, PCSpacing.xxxl)
             }
 
+            PCRadioRow(title: "I don't know yet", isSelected: birthKind == .unknown) {
+                birthKind = .unknown
+                homeStatus = .comingHome
+            }
+            if birthKind == .unknown {
+                Text("That's okay before homecoming. You can add an age later.")
+                    .font(Font.pc.secondary)
+                    .foregroundStyle(Color.pc.inkTertiary)
+                    .padding(.leading, PCSpacing.xxxl)
+            }
+
             if let birthError {
                 PCInlineError(message: birthError)
             }
@@ -169,12 +185,16 @@ struct AddPetView: View {
             nameError = "Enter your puppy's name to continue."
             firstError = firstError ?? nameError
         }
-        if birthKind == .exact, birthDate > Date() {
+        if birthKind == .exact, !clock.ordered(birthDate, beforeOrSameAs: Date()) {
             birthError = "Birth date can't be in the future."
             firstError = firstError ?? birthError
         }
+        if birthKind == .unknown, homeStatus == .home {
+            birthError = "Add an estimated age once your puppy is home."
+            firstError = firstError ?? birthError
+        }
         if homeStatus == .comingHome, birthKind == .exact,
-           Calendar.current.startOfDay(for: homecomingDate) < Calendar.current.startOfDay(for: birthDate) {
+           !clock.ordered(birthDate, beforeOrSameAs: homecomingDate) {
             homecomingError = "Homecoming can't be before the birth date."
             firstError = firstError ?? homecomingError
         }
@@ -184,10 +204,19 @@ struct AddPetView: View {
             return
         }
 
-        let birthInfo: BirthInfo = birthKind == .exact
-            ? .exact(birthDate: birthDate)
-            : .estimated(ageWeeks: estimatedWeeks, asOfDate: Date())
-        let homecoming: Date? = homeStatus == .comingHome ? homecomingDate : nil
+        let birthInfo: BirthInfo = switch birthKind {
+        case .exact:
+            .exact(birthDate: birthDate)
+        case .estimated:
+            .estimated(ageWeeks: estimatedWeeks, asOfDate: clock.startOfDay(for: Date()))
+        case .unknown:
+            .unknown
+        }
+        // “Home with us” is still a real homecoming signal. Recording today
+        // activates the two-week settling stage instead of skipping it.
+        let homecoming: Date? = homeStatus == .comingHome
+            ? clock.startOfDay(for: homecomingDate)
+            : clock.startOfDay(for: Date())
 
         isSubmitting = true
         Task {

@@ -14,55 +14,72 @@ final class AppModel {
         case main
     }
 
-    /// Slice A WP-2 backend switch. `mock` is the in-memory fixture
-    /// backend (`MockBackend`); `local` is the real local Supabase stack
-    /// (`supabase start`) via supabase-swift. Defaults to `mock` at
-    /// construction; `activateLocalBackendIfReachable()` promotes to
-    /// `local` at launch when the stack answers, and never demotes back.
-    enum BackendMode {
+    enum BackendMode: Equatable {
+        case resolving
         case mock
         case local
+        case hosted
+        case unavailable
     }
 
-    private(set) var backendMode: BackendMode = .mock
+    private(set) var backendMode: BackendMode
+    private(set) var backendMessage: String?
+    private let backendSelection: BackendSelection
 
     private(set) var auth: any AuthService
     private(set) var households: any HouseholdService
-    // `.mock` keeps the in-memory `MockPlanService` (engine §26 fixture
-    // plans). `.local` swaps to `RealPlanService`, backed by the real
-    // `generate-plan` edge function and the write-path command envelope
-    // (doc 17 WP-3/WP-4 landed) — see `activateLocalBackendIfReachable`.
+    // `.mock` uses engine §26 fixtures; real environments use the
+    // server-authoritative generate-plan and write-path functions.
     private(set) var plans: any PlanService
-    /// The `MockBackend` powering `plans`, in every backend mode. Kept so
-    /// `.local` mode can register the real household/pet under their real
-    /// ids (see `household`/`activePet` didSet below) — without this,
-    /// `MockPlanService` would look up a pet id that only exists in the
-    /// real backend and hit `MockBackend.generatePlan`'s "must exist"
-    /// precondition (a hard crash, not a catchable error) the moment Home
-    /// asks for a plan.
-    private let planFixtureBackend: MockBackend
+    /// Full occurrence/schedule coordination is installed for real
+    /// environments after the Supabase client is available. Mock/preview
+    /// builds keep using Planner's compatibility adapter.
+    private(set) var planner: (any PlannerService)?
+    /// Real environments expose the durable, account-scoped mutation queue
+    /// so Home/Planner can render exact pending/failure counts.
+    private(set) var mutationQueue: OfflineOperationQueue?
+    /// Local-only reminder coordinator. Permission is requested only by an
+    /// explicit settings action through this protocol.
+    private(set) var notifications: any LocalNotificationServicing
 
     var phase: Phase = .onboarding
     var currentUser: UserAccount?
-    var household: Household? {
-        didSet { syncPlanFixtureBackend() }
-    }
+    var household: Household?
     /// Active pet context — per-device selection (IA §11). Slice A is
     /// single-pet, so this is simply the first pet.
-    var activePet: Pet? {
-        didSet { syncPlanFixtureBackend() }
-    }
+    var activePet: Pet?
+    /// Where an authenticated caregiver should resume when setup was
+    /// interrupted. `OnboardingFlowView` consumes this once on appearance.
+    private(set) var pendingOnboardingDestination: PostAuthDestination?
 
     init(
         auth: any AuthService,
         households: any HouseholdService,
         plans: any PlanService,
-        planFixtureBackend: MockBackend
+        notifications: (any LocalNotificationServicing)? = nil,
+        backendSelection: BackendSelection = .mock,
+        backendMode: BackendMode = .mock
     ) {
         self.auth = auth
         self.households = households
         self.plans = plans
-        self.planFixtureBackend = planFixtureBackend
+        self.notifications = notifications ?? LocalNotificationService.live()
+        self.backendSelection = backendSelection
+        self.backendMode = backendMode
+    }
+
+    /// App launch model. Its fixture services are deliberately hidden while
+    /// the requested backend is resolving; they exist only because service
+    /// protocol properties need an initial value.
+    static func bootstrap(selection: BackendSelection = .resolve()) -> AppModel {
+        let backend = MockBackend()
+        return AppModel(
+            auth: MockAuthService(backend: backend),
+            households: MockHouseholdService(backend: backend),
+            plans: MockPlanService(backend: backend),
+            backendSelection: selection,
+            backendMode: .resolving
+        )
     }
 
     static func mock() -> AppModel {
@@ -73,37 +90,64 @@ final class AppModel {
         AppModel(
             auth: MockAuthService(backend: backend),
             households: MockHouseholdService(backend: backend),
-            plans: MockPlanService(backend: backend),
-            planFixtureBackend: backend
+            plans: MockPlanService(backend: backend)
         )
     }
 
-    /// See `planFixtureBackend` above. In mock mode this is a harmless
-    /// same-object overwrite (the mock household/write services already
-    /// mutate this exact backend); in `.local` mode it's what makes Home
-    /// resolvable at all once a real household/pet are set.
-    private func syncPlanFixtureBackend() {
-        guard let household, let activePet else { return }
-        planFixtureBackend.adopt(household: household, pet: activePet)
-    }
+    /// Resolves the explicitly selected environment and restores a session.
+    /// Failure remains visible; there is no implicit switch to demo data.
+    func activateConfiguredBackend() async {
+        guard backendMode == .resolving || backendMode == .unavailable else { return }
+        backendMessage = nil
 
-    /// Slice A WP-2 launch-time backend resolution: probes the local
-    /// Supabase stack and, if reachable, swaps `auth`/`households` to the
-    /// real implementations and restores any existing session. Falls back
-    /// to (and stays on) the mock backend when the stack isn't running —
-    /// e.g. CI, a simulator with no local stack started, or `supabase
-    /// stop`. Call once, early (`PetCompanionApp` does this from a
-    /// `.task` at the root view).
-    func activateLocalBackendIfReachable() async {
-        guard backendMode == .mock else { return }
-        guard await SupabaseClientProvider.isLocalStackReachable() else { return }
+        let config: BackendConfig
+        let resolvedMode: BackendMode
+        switch backendSelection {
+        case .mock:
+            backendMode = .mock
+            return
+        case .local(let selected):
+            config = selected
+            resolvedMode = .local
+        case .hosted(let selected):
+            config = selected
+            resolvedMode = .hosted
+        case .invalid(let message):
+            backendMessage = message
+            backendMode = .unavailable
+            return
+        }
 
-        let client = SupabaseClientProvider.shared
+        backendMode = .resolving
+        guard await SupabaseClientProvider.isReachable(config: config) else {
+            backendMessage = resolvedMode == .local
+                ? "The local PetCompanion service is not running. Start Supabase in the project folder, then retry."
+                : "PetCompanion couldn't reach its service. Check your connection, then retry."
+            backendMode = .unavailable
+            return
+        }
+
+        let client = SupabaseClientProvider.makeClient(config: config)
+        let operationQueue = OfflineOperationQueue(
+            transport: SupabaseWritePathTransport(client: client)
+        )
+        let notifications = LocalNotificationService.live()
         let realAuth = RealAuthService(client: client)
         auth = realAuth
-        households = RealHouseholdService(client: client)
-        plans = RealPlanService(client: client)
-        backendMode = .local
+        households = RealHouseholdService(client: client, operationQueue: operationQueue)
+        plans = RealPlanService(
+            client: client,
+            operationQueue: operationQueue,
+            notifications: notifications
+        )
+        planner = RealPlannerService(
+            client: client,
+            model: self,
+            operationQueue: operationQueue
+        )
+        mutationQueue = operationQueue
+        self.notifications = notifications
+        backendMode = resolvedMode
 
         // Session restore (US-002): `RealAuthService` seeds `currentUser`
         // synchronously from the on-disk session at init, but that's
@@ -111,13 +155,26 @@ final class AppModel {
         // previously-signed-in caregiver lands on HM-01 instead of
         // onboarding.
         if let user = realAuth.currentUser {
-            let destination = await didAuthenticate(user)
-            if destination == .createHousehold {
-                // Signed in but no household yet — leave `phase` as
-                // `.onboarding`; `OnboardingFlowView` starts at Welcome,
-                // which is a one-tap re-entry (Sign in) away from here.
-                // Slice A doesn't special-case "signed in, mid-onboarding"
-                // routing beyond what ON-02/03 already provide.
+            do {
+                let destination = try await didAuthenticate(user)
+                if destination != .main {
+                    pendingOnboardingDestination = destination
+                }
+            } catch {
+                // A local database reset or an expired hosted refresh token
+                // can leave a syntactically valid session in Keychain. That
+                // is an authentication state, not a backend outage: discard
+                // it and let the caregiver sign in again.
+                operationQueue.deactivate()
+                notifications.deactivate()
+                realAuth.signOut()
+                currentUser = nil
+                household = nil
+                activePet = nil
+                pendingOnboardingDestination = nil
+                backendMessage = "Your previous session expired. Sign in again to continue."
+                backendMode = resolvedMode
+                phase = .onboarding
             }
         }
     }
@@ -136,25 +193,39 @@ final class AppModel {
 
     // MARK: - Flow
 
-    enum PostAuthDestination {
+    enum PostAuthDestination: Equatable {
         /// Existing household — straight to HM-01 (doc 14 ON-02/03 routing).
         case main
         /// No household yet — continue to ON-06.
         case createHousehold
+        /// Household exists but setup stopped before the first pet.
+        case addPet
     }
 
     /// Post-auth routing: pending invitation handling is Slice B (ON-05);
     /// Slice A routes between an existing household and household creation.
-    func didAuthenticate(_ user: UserAccount) async -> PostAuthDestination {
+    func didAuthenticate(_ user: UserAccount) async throws -> PostAuthDestination {
         currentUser = user
-        if let existing = try? await households.currentHousehold(),
-           let pet = (try? await households.pets(householdId: existing.id))?.first {
+        mutationQueue?.activate(accountId: user.id)
+        notifications.activate(accountId: user.id)
+        await mutationQueue?.replayPending()
+        if let existing = try await households.currentHousehold() {
             household = existing
-            activePet = pet
-            phase = .main
-            return .main
+            if let pet = try await households.pets(householdId: existing.id).first {
+                activePet = pet
+                phase = .main
+                return .main
+            }
+            pendingOnboardingDestination = .addPet
+            return .addPet
         }
+        pendingOnboardingDestination = .createHousehold
         return .createHousehold
+    }
+
+    func consumePendingOnboardingDestination() -> PostAuthDestination? {
+        defer { pendingOnboardingDestination = nil }
+        return pendingOnboardingDestination
     }
 
     /// Onboarding exit: landing is always HM-01 with the first generated
@@ -164,10 +235,23 @@ final class AppModel {
     }
 
     func signOut() {
+        mutationQueue?.deactivate()
+        notifications.deactivate()
         auth.signOut()
         currentUser = nil
         household = nil
         activePet = nil
+        pendingOnboardingDestination = nil
         phase = .onboarding
+    }
+
+    func replayOfflineOperations() async {
+        await mutationQueue?.replayPending()
+        guard mutationQueue?.status.pendingCount == 0, let activePet else { return }
+        _ = try? await plans.plan(
+            forPet: activePet.id,
+            on: Date(),
+            resectioningCompleted: false
+        )
     }
 }

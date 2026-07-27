@@ -5,9 +5,14 @@ import Foundation
 @MainActor
 protocol AuthService: AnyObject {
     var currentUser: UserAccount? { get }
-    func createAccount(email: String, password: String) async throws -> UserAccount
+    func createAccount(email: String, password: String) async throws -> AccountCreationResult
     func signIn(email: String, password: String) async throws -> UserAccount
     func signOut()
+}
+
+enum AccountCreationResult: Equatable, Sendable {
+    case authenticated(UserAccount)
+    case confirmationRequired(email: String)
 }
 
 enum AuthError: LocalizedError {
@@ -39,8 +44,8 @@ final class MockAuthService: AuthService {
 
     var currentUser: UserAccount? { backend.currentUser }
 
-    func createAccount(email: String, password: String) async throws -> UserAccount {
-        try await submit(email: email, password: password)
+    func createAccount(email: String, password: String) async throws -> AccountCreationResult {
+        .authenticated(try await submit(email: email, password: password))
     }
 
     func signIn(email: String, password: String) async throws -> UserAccount {

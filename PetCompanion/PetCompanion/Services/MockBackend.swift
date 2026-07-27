@@ -96,24 +96,6 @@ final class MockBackend {
         return pet
     }
 
-    /// Slice A WP-2: registers an already-existing household/pet — from the
-    /// real local Supabase backend, in `.local` mode — under their real
-    /// ids. `PlanService` intentionally stays mock in every backend mode
-    /// (plan generation isn't built yet, doc 17 WP-3/WP-4), so `AppModel`
-    /// calls this whenever `household`/`activePet` change so `generatePlan`
-    /// finds a pet with the id `HomeViewModel` actually requests instead of
-    /// hitting the "must exist" precondition against an empty backend.
-    /// This intentionally does NOT touch `members`/`users` — Home doesn't
-    /// need them for the mock plan fixtures.
-    func adopt(household: Household, pet: Pet) {
-        self.household = household
-        if let index = pets.firstIndex(where: { $0.id == pet.id }) {
-            pets[index] = pet
-        } else {
-            pets.append(pet)
-        }
-    }
-
     // MARK: - Plans
 
     private func planKey(petId: UUID, date: Date) -> String {
@@ -160,28 +142,9 @@ final class MockBackend {
             throw PlanServiceError.itemNotFound
         }
 
-        var item = snapshot.items[index]
-
-        // Accepting a recommendation promotes it to a real occurrence so all
-        // completions share one history and attribution model (doc 10 §10.3).
-        if item.occurrenceId == nil {
-            let origin: TaskOrigin = switch item.category {
-            case .training: .trainingProgram
-            case .socialization: .socializationRule
-            default: .developmentRule
-            }
-            let occurrence = TaskOccurrence(
-                occurrenceKey: "accepted:\(item.itemKey)",
-                householdId: snapshot.plan.householdId,
-                petId: petId,
-                localDueDate: calendar.startOfDay(for: date),
-                timePolicy: .anytime,
-                window: item.timeWindow,
-                obligationClass: item.obligationClass,
-                origin: origin
-            )
-            snapshot.occurrences.append(occurrence)
-            item.occurrenceId = occurrence.id
+        let item = snapshot.items[index]
+        guard item.occurrenceId != nil else {
+            throw PlanServiceError.recommendationNotYetActionable
         }
 
         guard let occurrenceIndex = snapshot.occurrences.firstIndex(where: { $0.id == item.occurrenceId }) else {
@@ -193,7 +156,42 @@ final class MockBackend {
         )
         // The item keeps its section: a completed card stays inline until
         // the next natural list update (engine §4.3, doc 09 §8).
-        snapshot.items[index] = item
+        snapshots[key] = snapshot
+        return snapshot
+    }
+
+    func acceptRecommendation(itemId: UUID, petId: UUID, date: Date) throws -> PlanSnapshot {
+        let key = planKey(petId: petId, date: date)
+        guard var snapshot = snapshots[key] else { throw PlanServiceError.planNotFound }
+        guard let itemIndex = snapshot.items.firstIndex(where: { $0.id == itemId }),
+              snapshot.items[itemIndex].kind == .recommendation
+        else { throw PlanServiceError.itemNotFound }
+        if snapshot.items[itemIndex].occurrenceId != nil {
+            return snapshot
+        }
+
+        let item = snapshot.items[itemIndex]
+        let origin: TaskOrigin = switch item.category {
+        case .training: .trainingProgram
+        case .socialization: .socializationRule
+        default: .developmentRule
+        }
+        let occurrence = TaskOccurrence(
+            occurrenceKey: "accepted:\(item.itemKey)",
+            householdId: snapshot.plan.householdId,
+            petId: petId,
+            localDueDate: calendar.startOfDay(for: date),
+            timePolicy: .anytime,
+            window: item.timeWindow,
+            obligationClass: .scheduled,
+            origin: origin
+        )
+        snapshot.occurrences.append(occurrence)
+        snapshot.items[itemIndex].kind = .obligation
+        snapshot.items[itemIndex].occurrenceId = occurrence.id
+        snapshot.items[itemIndex].obligationClass = .scheduled
+        snapshot.items[itemIndex].section = .today
+        snapshot.plan.planVersion += 1
         snapshots[key] = snapshot
         return snapshot
     }

@@ -294,9 +294,27 @@ struct PlanSnapshot: Codable, Equatable, Sendable {
     var items: [PlanItem]
     var occurrences: [TaskOccurrence]
     var dispositions: [Disposition]
+    /// Set only when this aggregate was recovered from the durable
+    /// last-known-good cache after an authoritative request failed.
+    /// Optional so caches written by older builds decode as authoritative.
+    var servedFromCacheAt: Date?
 
     enum CodingKeys: String, CodingKey {
-        case plan, items, occurrences, dispositions
+        case plan, items, occurrences, dispositions, servedFromCacheAt
+    }
+
+    init(
+        plan: Plan,
+        items: [PlanItem],
+        occurrences: [TaskOccurrence],
+        dispositions: [Disposition],
+        servedFromCacheAt: Date? = nil
+    ) {
+        self.plan = plan
+        self.items = items
+        self.occurrences = occurrences
+        self.dispositions = dispositions
+        self.servedFromCacheAt = servedFromCacheAt
     }
 }
 

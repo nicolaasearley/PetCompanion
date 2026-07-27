@@ -48,7 +48,7 @@ final class RealAuthService: AuthService {
         _currentUser = session.map(Self.userAccount(from:))
     }
 
-    func createAccount(email: String, password: String) async throws -> UserAccount {
+    func createAccount(email: String, password: String) async throws -> AccountCreationResult {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         // Same shape as the mock's inline validation (ON-02 states) so the
         // form's error UI behaves identically before hitting the network.
@@ -83,12 +83,11 @@ final class RealAuthService: AuthService {
         let account = UserAccount(id: response.user.id, displayName: displayName)
         if response.session != nil {
             _currentUser = account
+            return .authenticated(account)
         }
-        // Confirmations-on path: no session yet, caller still gets the
-        // account back so the UI can proceed (matches the mock's
-        // fire-and-succeed shape); `currentUser` stays nil until the SDK
-        // observes a `signedIn` event after the caregiver confirms.
-        return account
+        // Hosted confirmations-on path: onboarding must pause until the
+        // caregiver has a real authenticated session.
+        return .confirmationRequired(email: trimmed)
     }
 
     func signIn(email: String, password: String) async throws -> UserAccount {

@@ -2,9 +2,8 @@ import SwiftUI
 import Observation
 import UIKit
 
-/// State and interactions for HM-01. Optimistic-by-design: actions render
-/// instantly against the mock service and the same call sites will drive
-/// the queued write path later (US-107).
+/// State and interactions for HM-01. Server confirmation remains visible and
+/// failures are never mistaken for successful household writes.
 @MainActor
 @Observable
 final class HomeViewModel {
@@ -20,13 +19,18 @@ final class HomeViewModel {
     var detailItem: PlanItem?
     var showAddTask = false
     var newTaskTitle = ""
+    var isSubmitting = false
 
     private var memberNames: [UUID: String] = [:]
+    private var lastVerifiedAt: Date?
+    private var isStale = false
 
-    /// Single-user mock state is always verified; the line stays silent
-    /// (doc 09 §7.8). The stale/queued cases light up with the real sync
-    /// layer in WP-5.
-    let syncStatus: SyncStatus = .current
+    var syncStatus: SyncStatus {
+        if isStale {
+            return .stale(lastSynced: lastVerifiedAt ?? snapshot?.plan.generatedAt ?? .now)
+        }
+        return .current
+    }
 
     init(model: AppModel) {
         self.model = model
@@ -35,13 +39,32 @@ final class HomeViewModel {
     var pet: Pet? { model.activePet }
     var greetingName: String? { model.currentUser?.displayName }
     var capacityMode: CapacityMode { snapshot?.plan.capacityModeApplied ?? .normal }
+    private var clock: HouseholdClock {
+        model.household?.clock ?? HouseholdClock(timeZone: .current)
+    }
+    var householdCalendar: Calendar { clock.calendar }
+    var hasInitialLoadFailure: Bool {
+        snapshot == nil && !isLoading && errorMessage != nil
+    }
 
     var greeting: String {
-        switch Calendar.current.component(.hour, from: Date()) {
+        switch clock.calendar.component(.hour, from: Date()) {
         case ..<12: "Good morning"
         case ..<17: "Good afternoon"
         default: "Good evening"
         }
+    }
+
+    var petAgeAndStage: String? {
+        pet?.ageAndStageDisplay(calendar: clock.calendar)
+    }
+
+    var daysUntilHomecoming: Int? {
+        pet?.daysUntilHomecoming(calendar: clock.calendar)
+    }
+
+    var todayDisplay: String {
+        Self.dayDisplay(Date(), calendar: clock.calendar)
     }
 
     // MARK: - Loading
@@ -49,21 +72,51 @@ final class HomeViewModel {
     /// First load of the day's plan — completed items stay in their
     /// generated sections.
     func loadInitial() async {
-        guard snapshot == nil, let pet else { return }
+        guard snapshot == nil, !isLoading, let pet else { return }
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         await loadMembers()
-        snapshot = try? await model.plans.plan(forPet: pet.id, on: Date(), resectioningCompleted: false)
+        do {
+            snapshot = try await model.plans.plan(
+                forPet: pet.id,
+                on: Date(),
+                resectioningCompleted: false
+            )
+            updateVerificationState()
+        } catch {
+            errorMessage = Self.displayMessage(for: error)
+        }
     }
 
     /// A natural list update (pull-to-refresh, returning to the tab):
     /// completed items move to the Completed section (doc 09 §8).
     func refresh() async {
         guard let pet else { return }
+        errorMessage = nil
         await loadMembers()
-        if let refreshed = try? await model.plans.plan(forPet: pet.id, on: Date(), resectioningCompleted: true) {
+        do {
+            let refreshed = try await model.plans.plan(
+                forPet: pet.id,
+                on: Date(),
+                resectioningCompleted: true
+            )
             snapshot = refreshed
+            updateVerificationState()
+        } catch {
+            errorMessage = Self.displayMessage(for: error)
+            if snapshot != nil {
+                isStale = true
+            }
         }
+    }
+
+    func retryInitialLoad() {
+        Task { await loadInitial() }
+    }
+
+    func clearError() {
+        errorMessage = nil
     }
 
     private func loadMembers() async {
@@ -96,9 +149,10 @@ final class HomeViewModel {
             }
             do {
                 snapshot = try await model.plans.completeItem(itemId: item.id, petId: pet.id, on: Date())
+                updateVerificationState()
                 AccessibilityNotification.Announcement("\(item.title) completed").post()
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = Self.displayMessage(for: error)
             }
             completingItemIds.remove(item.id)
         }
@@ -109,9 +163,10 @@ final class HomeViewModel {
         Task {
             do {
                 snapshot = try await model.plans.undoCompletion(itemId: item.id, petId: pet.id, on: Date())
+                updateVerificationState()
                 AccessibilityNotification.Announcement("\(item.title) completion undone").post()
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = Self.displayMessage(for: error)
             }
         }
     }
@@ -119,13 +174,40 @@ final class HomeViewModel {
     // MARK: - Capacity (HM-04)
 
     func applyCapacity(_ mode: CapacityMode, scope: CapacityScope) {
-        guard let pet else { return }
+        guard let pet, !isSubmitting else { return }
+        isSubmitting = true
         Task {
+            defer { isSubmitting = false }
             do {
                 snapshot = try await model.plans.setCapacity(mode, scope: scope, petId: pet.id, on: Date())
+                updateVerificationState()
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = Self.displayMessage(for: error)
             }
+        }
+    }
+
+    // MARK: - Recommendation acceptance
+
+    func acceptRecommendation(_ item: PlanItem) async throws {
+        guard let pet,
+              item.kind == .recommendation,
+              item.occurrenceId == nil,
+              !isSubmitting
+        else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            snapshot = try await model.plans.acceptRecommendation(
+                itemId: item.id,
+                petId: pet.id,
+                on: Date()
+            )
+            updateVerificationState()
+            AccessibilityNotification.Announcement("\(item.title) added to today").post()
+        } catch {
+            errorMessage = Self.displayMessage(for: error)
+            throw error
         }
     }
 
@@ -133,13 +215,17 @@ final class HomeViewModel {
 
     func addTask() {
         let title = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        newTaskTitle = ""
-        guard !title.isEmpty, let pet else { return }
+        guard !title.isEmpty, let pet, !isSubmitting else { return }
+        isSubmitting = true
         Task {
+            defer { isSubmitting = false }
             do {
                 snapshot = try await model.plans.addOneTimeTask(title: title, petId: pet.id, on: Date())
+                newTaskTitle = ""
+                updateVerificationState()
+                AccessibilityNotification.Announcement("\(title) added to today").post()
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = Self.displayMessage(for: error)
             }
         }
     }
@@ -151,6 +237,9 @@ final class HomeViewModel {
     // MARK: - Display helpers
 
     func cardState(for item: PlanItem) -> PlanItemCard.CardState {
+        if item.displayState == .stale {
+            return .disabled
+        }
         if completingItemIds.contains(item.id) {
             return .completing
         }
@@ -170,7 +259,7 @@ final class HomeViewModel {
             return nil
         }
         let name = memberNames[completion.actorUserId] ?? "a caregiver"
-        let time = completion.effectiveAt.formatted(date: .omitted, time: .shortened)
+        let time = Self.timeDisplay(completion.effectiveAt, calendar: clock.calendar)
         return "by \(name), \(time)"
     }
 
@@ -187,9 +276,9 @@ final class HomeViewModel {
             return item.category.displayName
         case .comingUp:
             guard let occurrence = snapshot.occurrence(for: item) else { return nil }
-            let day = Self.upcomingDayText(occurrence.localDueDate)
+            let day = Self.upcomingDayText(occurrence.localDueDate, calendar: clock.calendar)
             if occurrence.timePolicy == .exactTime, let dueTime = occurrence.dueTime {
-                return "\(day) \(dueTime.formatted(date: .omitted, time: .shortened))"
+                return "\(day) \(Self.timeDisplay(dueTime, calendar: clock.calendar))"
             }
             if item.category == .preparation {
                 return "prepare by \(day)"
@@ -210,9 +299,42 @@ final class HomeViewModel {
             to: calendar.startOfDay(for: date)
         ).day ?? 0
         if days < 7 {
-            return date.formatted(.dateTime.weekday(.abbreviated))
+            return dayFormatter(calendar: calendar, template: "EEE").string(from: date)
         }
-        return date.formatted(.dateTime.month(.abbreviated).day())
+        return dayFormatter(calendar: calendar, template: "MMM d").string(from: date)
+    }
+
+    private static func dayDisplay(_ date: Date, calendar: Calendar) -> String {
+        dayFormatter(calendar: calendar, template: "EEEE MMMM d").string(from: date)
+    }
+
+    private static func timeDisplay(_ date: Date, calendar: Calendar) -> String {
+        dayFormatter(calendar: calendar, template: "jm").string(from: date)
+    }
+
+    private static func dayFormatter(calendar: Calendar, template: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return formatter
+    }
+
+    private static func displayMessage(for error: Error) -> String {
+        let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        return message.isEmpty
+            ? "PetCompanion couldn't update the household right now. Please try again."
+            : message
+    }
+
+    private func updateVerificationState() {
+        isStale = snapshot?.servedFromCacheAt != nil
+        if !isStale {
+            lastVerifiedAt = .now
+        } else if lastVerifiedAt == nil {
+            lastVerifiedAt = snapshot?.plan.generatedAt
+        }
     }
 
     /// Today items grouped into broad windows when useful (engine §6.2).

@@ -18,6 +18,17 @@ struct AuthFormView: View {
 
     let mode: Mode
     let onAuthenticated: (UserAccount) -> Void
+    let onConfirmationRequired: (String) -> Void
+
+    init(
+        mode: Mode,
+        onAuthenticated: @escaping (UserAccount) -> Void,
+        onConfirmationRequired: @escaping (String) -> Void = { _ in }
+    ) {
+        self.mode = mode
+        self.onAuthenticated = onAuthenticated
+        self.onConfirmationRequired = onConfirmationRequired
+    }
 
     @Environment(AppModel.self) private var model
     @State private var email = ""
@@ -77,14 +88,17 @@ struct AuthFormView: View {
         Task {
             defer { isSubmitting = false }
             do {
-                let user: UserAccount
                 switch mode {
                 case .createAccount:
-                    user = try await model.auth.createAccount(email: email, password: password)
+                    switch try await model.auth.createAccount(email: email, password: password) {
+                    case .authenticated(let user):
+                        onAuthenticated(user)
+                    case .confirmationRequired(let email):
+                        onConfirmationRequired(email)
+                    }
                 case .signIn:
-                    user = try await model.auth.signIn(email: email, password: password)
+                    onAuthenticated(try await model.auth.signIn(email: email, password: password))
                 }
-                onAuthenticated(user)
             } catch {
                 let message = error.localizedDescription
                 errorMessage = message

@@ -8,16 +8,47 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            switch model.phase {
-            case .onboarding:
-                OnboardingFlowView()
-                    .transition(.opacity)
-            case .main:
-                MainTabView()
-                    .transition(.opacity)
+            switch model.backendMode {
+            case .resolving:
+                ProgressView("Connecting…")
+                    .tint(Color.pc.primary)
+            case .unavailable:
+                backendUnavailable
+            case .mock, .local, .hosted:
+                switch model.phase {
+                case .onboarding:
+                    OnboardingFlowView()
+                        .transition(.opacity)
+                case .main:
+                    MainTabView()
+                        .transition(.opacity)
+                }
             }
         }
         .animation(.easeInOut(duration: 0.25), value: model.phase)
+        .animation(.easeInOut(duration: 0.2), value: model.backendMode)
+    }
+
+    private var backendUnavailable: some View {
+        VStack(spacing: PCSpacing.lg) {
+            Image(systemName: "network.slash")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(Color.pc.primary)
+                .accessibilityHidden(true)
+            Text("Can't connect")
+                .font(Font.pc.title)
+                .foregroundStyle(Color.pc.ink)
+            Text(model.backendMessage ?? "PetCompanion couldn't reach its service.")
+                .font(Font.pc.body)
+                .foregroundStyle(Color.pc.inkSecondary)
+                .multilineTextAlignment(.center)
+            PrimaryButton(title: "Try again") {
+                Task { await model.activateConfiguredBackend() }
+            }
+        }
+        .padding(PCSpacing.screenMargin)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.pc.bg.ignoresSafeArea())
     }
 }
 

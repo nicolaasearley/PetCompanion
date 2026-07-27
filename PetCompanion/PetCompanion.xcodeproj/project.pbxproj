@@ -334,9 +334,7 @@
 				DEVELOPMENT_TEAM = 2787685448;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_PC_BACKEND_MODE = "$(PC_BACKEND_MODE)";
-				INFOPLIST_KEY_PC_SUPABASE_ANON_KEY = "$(PC_SUPABASE_ANON_KEY)";
-				INFOPLIST_KEY_PC_SUPABASE_URL = "$(PC_SUPABASE_URL)";
+				INFOPLIST_FILE = BackendInfo.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -375,9 +373,7 @@
 				DEVELOPMENT_TEAM = 2787685448;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_PC_BACKEND_MODE = "$(PC_BACKEND_MODE)";
-				INFOPLIST_KEY_PC_SUPABASE_ANON_KEY = "$(PC_SUPABASE_ANON_KEY)";
-				INFOPLIST_KEY_PC_SUPABASE_URL = "$(PC_SUPABASE_URL)";
+				INFOPLIST_FILE = BackendInfo.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Base Info.plist supplying the backend selection keys.
+
+  These cannot be delivered through INFOPLIST_KEY_* build settings: Xcode only
+  maps that prefix onto its own allowlist of recognized Info.plist keys and
+  silently discards custom ones, which left BackendSelection.resolve falling
+  through to its compiled-in default. Xcode merges the keys it generates on top
+  of this file, so GENERATE_INFOPLIST_FILE stays enabled.
+-->
+<plist version="1.0">
+<dict>
+	<key>PC_BACKEND_MODE</key>
+	<string>$(PC_BACKEND_MODE)</string>
+	<key>PC_SUPABASE_URL</key>
+	<string>$(PC_SUPABASE_URL)</string>
+	<key>PC_SUPABASE_ANON_KEY</key>
+	<string>$(PC_SUPABASE_ANON_KEY)</string>
+</dict>
+</plist>

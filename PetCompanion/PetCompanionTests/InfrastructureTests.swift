@@ -3,6 +3,33 @@ import XCTest
 
 @MainActor
 final class InfrastructureTests: XCTestCase {
+    /// The other selection tests inject `info` directly, so they stayed green
+    /// while the real bundle carried no backend keys at all and every build
+    /// silently fell back to the compiled-in default. This asserts the delivery
+    /// mechanism itself: the keys must actually reach Info.plist, expanded.
+    func testBundleActuallyCarriesResolvedBackendKeys() throws {
+        let info = try XCTUnwrap(Bundle.main.infoDictionary)
+        for key in ["PC_BACKEND_MODE", "PC_SUPABASE_URL", "PC_SUPABASE_ANON_KEY"] {
+            let value = try XCTUnwrap(
+                info[key] as? String,
+                "\(key) is missing from Info.plist. INFOPLIST_KEY_* does not deliver custom keys; they must come from the base plist named by INFOPLIST_FILE."
+            )
+            XCTAssertFalse(value.isEmpty, "\(key) resolved to an empty string")
+            XCTAssertFalse(
+                value.hasPrefix("$("),
+                "\(key) was not expanded — its build setting is unset for this configuration"
+            )
+        }
+
+        // The bundle must resolve to a usable backend, not the invalid state.
+        switch BackendSelection.resolve(environment: [:], arguments: ["PetCompanion"], info: info, isDebug: false) {
+        case .invalid(let message):
+            XCTFail("Bundle configuration is unusable: \(message)")
+        case .mock, .local, .hosted:
+            break
+        }
+    }
+
     func testBackendSelectionRequiresHostedCredentials() {
         let selection = BackendSelection.resolve(
             environment: [:],

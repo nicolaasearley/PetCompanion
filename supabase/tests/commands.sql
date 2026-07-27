@@ -419,6 +419,41 @@ select test_commands.assert_true(
          and client_idempotency_key = 'commands-accept-rec-1')
 );
 
+-- Undoing a completion must return the item to Today. The derivative trigger
+-- used to move an item into the Completed section on completion and then fall
+-- through to the existing section for every other state, so the section was
+-- sticky: an undone item stayed collapsed under Completed, and skipping it
+-- afterwards left a skipped item sitting in Completed.
+select test_commands.assert_true(
+  'a completed promotion sits in the completed section',
+  (select section = 'completed' and display_state = 'completed' and completion is not null
+   from public.plan_items where id = 'a9000000-0000-0000-0000-000000000001')
+);
+do $$
+declare
+  promoted_occurrence uuid;
+begin
+  select occurrence_id into promoted_occurrence
+  from public.plan_items where id = 'a9000000-0000-0000-0000-000000000001';
+
+  perform public.write_path_undo_completion(
+    'a1000000-0000-0000-0000-000000000001',
+    'commands-undo-promoted', 'hash-undo-promoted',
+    '{"command":"undo_completion"}'::jsonb,
+    '2026-07-26 12:25:00+00'::timestamptz, null,
+    jsonb_build_object('occurrence_id', promoted_occurrence)
+  );
+end;
+$$;
+select test_commands.assert_true(
+  'undo_completion returns the plan item to today rather than stranding it in completed',
+  (select section = 'today' and display_state = 'planned' and completion is null
+   from public.plan_items where id = 'a9000000-0000-0000-0000-000000000001')
+  and (select state = 'pending' from public.task_occurrences o
+       join public.plan_items pi on pi.occurrence_id = o.id
+       where pi.id = 'a9000000-0000-0000-0000-000000000001')
+);
+
 do $$
 declare
   failed_count integer;

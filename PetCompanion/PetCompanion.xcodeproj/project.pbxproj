@@ -349,7 +349,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				MARKETING_VERSION = 1.0;
-				PC_BACKEND_MODE = local;
+				PC_BACKEND_MODE = hosted;
 				PC_SUPABASE_ANON_KEY = sb_publishable_hZ68iCvx2pFAClNN1nJkdw_8HRjGj3W;
 				PC_SUPABASE_URL = "https://fhiqnhmqbkapydvyvost.supabase.co";
 				PRODUCT_BUNDLE_IDENTIFIER = com.nic.petcompanion;

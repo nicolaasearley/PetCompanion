@@ -16,6 +16,10 @@ final class OfflineOperationQueueTests: XCTestCase {
         }
 
         var outcomes: [Outcome]
+        /// Commands that never recover, keyed to the code the transport reports.
+        /// `HTTP_500` models a server that answers but always fails;
+        /// `NETWORK_UNAVAILABLE` models a command that never arrives.
+        var permanentlyUnavailable: [String: String] = [:]
         private(set) var executed: [OfflineOperation] = []
 
         init(_ outcomes: [Outcome]) {
@@ -24,6 +28,12 @@ final class OfflineOperationQueueTests: XCTestCase {
 
         func execute(_ operation: OfflineOperation) async throws -> Data {
             executed.append(operation)
+            if let code = permanentlyUnavailable[operation.command] {
+                throw OfflineTransportError.unavailable(
+                    code: code,
+                    message: "Permanently unavailable"
+                )
+            }
             let outcome = outcomes.isEmpty ? .success : outcomes.removeFirst()
             switch outcome {
             case .success:
@@ -147,6 +157,87 @@ final class OfflineOperationQueueTests: XCTestCase {
         XCTAssertEqual(queue.operations.first?.state, .rejected)
         XCTAssertEqual(queue.status.rejectedCount, 1)
         XCTAssertEqual(queue.status.pendingCount, 0)
+    }
+
+    func testPersistentServerFailureIsSetAsideSoTheQueueDrains() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // The server answers but always fails. Without a retry bound this would
+        // block the FIFO forever and the younger write would never be sent.
+        let transport = Transport([])
+        transport.permanentlyUnavailable = ["doomed": "HTTP_500"]
+        let queue = OfflineOperationQueue(
+            transport: transport,
+            store: OfflineOperationStore(baseDirectory: directory)
+        )
+        queue.activate(accountId: UUID())
+
+        do {
+            _ = try await queue.submit(command: "doomed", payload: Payload(value: "A"))
+            XCTFail("Expected the write to remain queued")
+        } catch OfflineMutationError.queued {
+            // Expected.
+        }
+        do {
+            _ = try await queue.submit(command: "healthy", payload: Payload(value: "B"))
+            XCTFail("The younger write must stay behind the failing head")
+        } catch OfflineMutationError.queued {
+            // Expected.
+        }
+
+        // Bounded so a regression fails the assertions below instead of hanging.
+        for _ in 0..<(OfflineOperationQueue.maxRetryableAttempts * 2) where queue.status.pendingCount > 0 {
+            await queue.replayPending()
+        }
+
+        let doomed = try XCTUnwrap(queue.operations.first { $0.command == "doomed" })
+        XCTAssertEqual(doomed.state, .rejected)
+        XCTAssertEqual(doomed.attemptCount, OfflineOperationQueue.maxRetryableAttempts)
+        XCTAssertEqual(queue.status.rejectedCount, 1)
+        XCTAssertEqual(queue.status.pendingCount, 0)
+        XCTAssertTrue(
+            transport.executed.contains { $0.command == "healthy" },
+            "The younger write must drain once the head is set aside"
+        )
+        XCTAssertNil(queue.operations.first { $0.command == "healthy" })
+    }
+
+    func testSustainedConnectivityLossNeverDiscardsQueuedWork() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // A household can be offline across many launches. Those attempts never
+        // reach the server, so they must not consume the retry budget.
+        let transport = Transport([])
+        transport.permanentlyUnavailable = ["offline-write": "NETWORK_UNAVAILABLE"]
+        let queue = OfflineOperationQueue(
+            transport: transport,
+            store: OfflineOperationStore(baseDirectory: directory)
+        )
+        queue.activate(accountId: UUID())
+
+        do {
+            _ = try await queue.submit(command: "offline-write", payload: Payload(value: "A"))
+            XCTFail("Expected the write to remain queued")
+        } catch OfflineMutationError.queued {
+            // Expected.
+        }
+
+        for _ in 0..<(OfflineOperationQueue.maxRetryableAttempts * 3) {
+            await queue.replayPending()
+        }
+
+        let pending = try XCTUnwrap(queue.operations.first)
+        XCTAssertEqual(pending.state, .failed, "Connectivity loss must stay retryable")
+        XCTAssertEqual(queue.status.rejectedCount, 0)
+        XCTAssertEqual(queue.status.pendingCount, 1)
+
+        // The moment the server is reachable the original envelope is sent.
+        transport.permanentlyUnavailable = [:]
+        await queue.replayPending()
+        XCTAssertTrue(queue.operations.isEmpty)
+        let sent = try XCTUnwrap(transport.executed.last)
+        XCTAssertEqual(sent.clientIdempotencyKey, pending.clientIdempotencyKey)
+        XCTAssertEqual(sent.recordedAt, pending.recordedAt)
     }
 
     func testAccountActivationNeverLoadsOrReplaysAnotherAccountsQueue() async throws {

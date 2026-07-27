@@ -157,8 +157,26 @@ Deno.serve(async (request) => {
     return jsonResponse(success(envelope.command, result, false), 200);
   } catch (error) {
     const code = codeOf(error);
-    await safeRecordFailure(user.id, envelope, payloadHash, code);
-    return jsonResponse(failure(code, messageOf(error), envelope.command), statusForError(code));
+    const status = statusForError(code);
+    // Only deterministic failures are cached against the idempotency key. A
+    // retry of a transient or unclassified failure must re-attempt the command
+    // rather than replay a stored 5xx, which would strand the client's queue
+    // behind an operation that can never succeed.
+    if (status < 500) {
+      await safeRecordFailure(user.id, envelope, payloadHash, code);
+    } else {
+      // Not persisted, so keep it diagnosable in the function logs. Routing
+      // identifiers only — never the payload, which can carry private notes.
+      console.error(
+        JSON.stringify({
+          event: "write_path_transient_failure",
+          command: envelope.command,
+          code,
+          actor_user_id: user.id,
+        }),
+      );
+    }
+    return jsonResponse(failure(code, messageOf(error), envelope.command), status);
   }
 });
 

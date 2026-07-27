@@ -66,6 +66,8 @@ struct OfflineOperation: Codable, Identifiable, Equatable, Sendable {
     let createdAt: Date
     var updatedAt: Date
     var state: State
+    /// Consecutive attempts that reached the server. Reset by a connectivity
+    /// failure, which means the command never got there.
     var attemptCount: Int
     var lastAttemptAt: Date?
     var lastErrorCode: String?
@@ -191,6 +193,21 @@ final class OfflineOperationStore {
 @MainActor
 @Observable
 final class OfflineOperationQueue {
+    /// A retryable failure blocks the queue head by design, so an operation the
+    /// server keeps failing would stall every later write indefinitely. After
+    /// this many consecutive server failures the operation is set aside for
+    /// review so the rest of the queue can drain.
+    static let maxRetryableAttempts = 8
+
+    /// Codes meaning the command never reached the server. These must not
+    /// consume the retry budget: a household that is simply offline across
+    /// several launches would otherwise have legitimate queued work set aside
+    /// even though it would succeed the moment connectivity returned.
+    private static let connectivityFailureCodes: Set<String> = [
+        "NETWORK_UNAVAILABLE",
+        "TRANSPORT_ERROR",
+    ]
+
     private let transport: any OfflineOperationTransport
     private let store: OfflineOperationStore
     private(set) var activeAccountId: UUID?
@@ -356,6 +373,9 @@ final class OfflineOperationQueue {
                       activationGeneration == replayGeneration
                 else { return responses }
                 markFailed(operationId: operation.id, code: code, message: message)
+                // An exhausted operation has been set aside; the FIFO may
+                // continue past it. Otherwise it stays at the head.
+                if wasSetAside(operationId: operation.id) { continue }
                 break
             } catch {
                 guard activeAccountId == replayAccountId,
@@ -366,6 +386,7 @@ final class OfflineOperationQueue {
                     code: "TRANSPORT_ERROR",
                     message: error.localizedDescription
                 )
+                if wasSetAside(operationId: operation.id) { continue }
                 break
             }
             refreshStatus()
@@ -375,12 +396,22 @@ final class OfflineOperationQueue {
 
     private func markFailed(operationId: UUID, code: String, message: String) {
         guard let index = operations.firstIndex(where: { $0.id == operationId }) else { return }
-        operations[index].state = .failed
+        if Self.connectivityFailureCodes.contains(code) {
+            // Never reached the server, so this attempt does not count.
+            operations[index].attemptCount = 0
+        }
+        let exhausted = operations[index].attemptCount >= Self.maxRetryableAttempts
+        operations[index].state = exhausted ? .rejected : .failed
         operations[index].lastErrorCode = code
         operations[index].lastErrorMessage = message
         operations[index].updatedAt = Date()
         persist()
         refreshStatus()
+    }
+
+    private func wasSetAside(operationId: UUID) -> Bool {
+        guard let index = operations.firstIndex(where: { $0.id == operationId }) else { return true }
+        return operations[index].state == .rejected
     }
 
     private func persist() {

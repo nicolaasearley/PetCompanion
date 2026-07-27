@@ -22,14 +22,25 @@ enum SupabaseClientProvider {
     /// reachable — so it can't be used as a reachability signal before
     /// the user has a session. `GET /auth/v1/health` requires no table
     /// grants and no session, and answers the same question ("is the
-    /// local stack up") cheaply.
+    /// stack up") cheaply.
+    ///
+    /// The `apikey` header is required. Hosted Supabase rejects every API
+    /// route without it — `{"message":"No API key found in request"}`, 401 —
+    /// whereas the local gateway served this path unauthenticated. Omitting it
+    /// made the probe report a perfectly healthy hosted project as
+    /// unreachable. The key is the public publishable credential, so this
+    /// remains an unauthenticated probe requiring no session.
+    ///
+    /// The timeout allows for a real network round trip and TLS handshake;
+    /// the original value was tuned for localhost.
     static func isReachable(
         config: BackendConfig,
-        timeout: TimeInterval = 2.5
+        timeout: TimeInterval = 8
     ) async -> Bool {
         var request = URLRequest(url: config.url.appendingPathComponent("auth/v1/health"))
         request.timeoutInterval = timeout
         request.httpMethod = "GET"
+        request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return false }

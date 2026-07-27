@@ -99,6 +99,20 @@ In **Authentication → URL Configuration**:
 4. Decide whether email confirmation is required for the private test. The app
    supports the confirmation-required state.
 
+**Decided 2026-07-27:** email confirmation is **off** for the private
+founding-household test, so accounts are usable immediately and no
+confirmation link is sent. This is recorded as code in
+`supabase/config.toml` under `[auth.email]` and applied with
+`supabase config push`. Re-enable it, and configure a production SMTP
+provider and a real `site_url`, before any wider distribution.
+
+Note that `supabase config push` sends the whole file, not one setting. Any
+value the file leaves unspecified is pushed as a CLI default, which is how
+the hosted project's TOTP enrolment, e-mail send throttle, and OTP length
+were briefly overwritten before being pinned back. Keep `config.toml` an
+accurate description of the hosted project: a push that reports every
+service `up_to_date` is the signal that it is.
+
 For an initial private TestFlight test, use Supabase’s default email provider
 only within its documented limits. Configure a production SMTP provider before
 public distribution.

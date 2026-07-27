@@ -3,7 +3,10 @@ project_id = "petcompanion"
 [api]
 enabled = true
 port = 54321
-schemas = ["public"]
+# graphql_public is exposed on the hosted project. It is listed here so that
+# `supabase config push` cannot silently un-expose it; the app itself does not
+# use GraphQL.
+schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
@@ -31,6 +34,28 @@ jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
 enable_signup = true
+
+[auth.email]
+# Email confirmation is off for the private founding-household test. Accounts
+# are usable immediately, and no confirmation link is sent — which also means
+# site_url below is not yet exercised. Turn this back on, and configure a
+# production SMTP provider and site_url, before any wider distribution.
+enable_confirmations = false
+# Pinned to the hosted project's original values. The CLI defaults are weaker
+# (1s send throttle, 6-digit OTP) and a bare `config push` would apply them.
+max_frequency = "1m0s"
+otp_length = 8
+
+[auth.mfa.totp]
+# On by default on the hosted project; unused by the app today, but a config
+# push must not silently disable it.
+enroll_enabled = true
+verify_enabled = true
+
+# Settings applied to the hosted project by `supabase config push`. Keeping the
+# project pinned here means a push cannot be aimed at the wrong project.
+[remotes.production]
+project_id = "fhiqnhmqbkapydvyvost"
 
 [functions.write-path]
 verify_jwt = true

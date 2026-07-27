@@ -1,7 +1,7 @@
 # Implementation Plan — Slice A
 
-**Status:** Draft  
-**Version:** 0.1  
+**Status:** In progress
+**Version:** 0.2
 **Last updated:** 2026-07-26  
 **Related documents:** [Core Features §20](03-core-features.md),
 [Technical Architecture](06-technical-architecture.md),
@@ -37,6 +37,15 @@ Slice A, because retrofitting them is the expensive path), recommendations
 beyond the seed rules needed for a useful plan, recurring schedules UI
 (model supports them; UI ships Slice D), notifications (in-app states only),
 Training/Care/Life tab content beyond stubs, media upload.
+
+**Build checkpoint extension (2026-07-26):** the private founding-household
+build now includes a read-only Planner agenda, local seed Training catalogue,
+Care profile overview, and Life framing so every accepted top-level destination
+has an honest first-use state. These surfaces do not pull forward their owning
+write models: recurring calendar/event editing remains Slice D, training goals
+and sessions remain Slice C, care records remain Slice D, and memories/media
+remain Slice E. [Current Build Status](19-current-build-status.md) records the
+implemented boundary.
 
 ## 3. Reading order for the implementing agent
 

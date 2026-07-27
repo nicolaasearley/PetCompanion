@@ -11,7 +11,10 @@ PetCompanion brings personalized guidance and coordination for puppy owners into
 
 ## Tech Stack
 
-- **Client:** Native iOS, SwiftUI. The Supabase Swift SDK handles auth, RLS-protected reads, and realtime subscriptions. Local cache via SwiftData with operation queue for offline mutations.
+- **Client:** Native iOS and SwiftUI. The Supabase Swift SDK handles auth,
+  RLS-protected reads, and Edge Function calls. A disk-backed last-known-good
+  plan cache, durable account-scoped FIFO mutation queue, and permission-aware
+  local reminders are implemented.
 - **Backend:** Supabase (managed Postgres, auth, storage, realtime, edge functions). Row-level security enforces household tenancy.
 - **Plan Engine:** Pure TypeScript package (`@petcompanion/engine`) run server-side in the MVP via edge functions and scheduled jobs. Single authoritative plan per household; no per-device drift.
 - **Server Language:** TypeScript (edge functions, engine package). Swift on the client with generated model types from the schema.
@@ -30,15 +33,39 @@ Install Docker and the Supabase CLI:
 brew install supabase/tap/supabase
 ```
 
-From the repository root, start the local Supabase stack:
+From the repository root, start the local Supabase stack. Run `db reset` on
+first setup, after migration changes, or when you intentionally want a clean
+seeded database; it deletes existing local data.
 
 ```sh
 supabase start
 supabase db reset
 ```
 
-The `db reset` command applies all migrations in `supabase/migrations/` and runs the seed in `supabase/seed.sql`. The Docker daemon must be running. Note: Docker CLI lives at `~/.local/bin` on this machine if not in your PATH.
+In a second terminal, serve both Edge Functions:
+
+```sh
+supabase functions serve
+```
+
+The Docker daemon must be running. The `db reset` command applies all
+migrations in `supabase/migrations/` and runs `supabase/seed.sql`.
 
 ## Current Status
 
-Slice A — foundational MVP scope — is in progress. See [docs/17-implementation-plan-slice-a.md](docs/17-implementation-plan-slice-a.md) for the work scope and implementation sequence. Material product and architecture decisions are logged in [docs/13-decision-log.md](docs/13-decision-log.md).
+The local private MVP now builds and runs end to end through Slice B: account
+and puppy onboarding, real recurring routines, a persisted Daily Plan,
+full Planner task creation and occurrence actions, append-only history,
+permission-aware local reminders, visible offline queue state, recommendation
+acceptance, capacity changes, quick add, and offline plan fallback. The iOS,
+engine, TypeScript, database-isolation, command, generation, and coordination
+test suites are green.
+
+See [Current Build Status](docs/19-current-build-status.md) for the exact
+implemented boundary and next slices, and
+[Implementation Plan — Slice A](docs/17-implementation-plan-slice-a.md) for
+the foundation, [Implementation Plan — Slice B](docs/20-implementation-plan-slice-b.md)
+for daily coordination, and
+[Hosted Supabase Deployment](docs/21-hosted-supabase-deployment.md) for the
+next environment handoff. Material product and architecture decisions are
+logged in [Decision Log](docs/13-decision-log.md).

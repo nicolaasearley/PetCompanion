@@ -277,6 +277,19 @@ values ('e1111111-0000-0000-0000-000000000001', 'FIXTURE-RLS-OCC-1', 'a1111111-0
 insert into public.dispositions (id, household_id, occurrence_id, action, actor_user_id, recorded_at, effective_at, client_idempotency_key)
 values ('f1111111-0000-0000-0000-000000000001', 'a1111111-0000-0000-0000-000000000001', 'e1111111-0000-0000-0000-000000000001', 'complete', '11111111-1111-1111-1111-111111111111', now(), now(), 'fixture-disp-key-1');
 
+insert into public.notification_candidates (
+  id, recipient_user_id, household_id, occurrence_id, class, source_ref,
+  scheduled_for, dedupe_key
+)
+values (
+  '06111111-0000-0000-0000-000000000001',
+  '11111111-1111-1111-1111-111111111111',
+  'a1111111-0000-0000-0000-000000000001',
+  'e1111111-0000-0000-0000-000000000001',
+  'task_due', '{"fixture":true}'::jsonb, now() + interval '1 hour',
+  'fixture-notification-a-1'
+);
+
 insert into public.plans (id, household_id, pet_id, local_date, time_zone_snapshot, stage_snapshot, capacity_mode_applied, catalogue_version_set, input_digest, status, created_by, updated_by)
 values ('01111111-0000-0000-0000-000000000001', 'a1111111-0000-0000-0000-000000000001', 'b1111111-0000-0000-0000-000000000001', '2026-07-26', 'America/Los_Angeles', '{}'::jsonb, 'normal', '[]'::jsonb, 'fixture-digest-1', 'open', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111');
 
@@ -311,6 +324,7 @@ select test_harness.run_count_check('task_definitions: non-member B sees 0 user-
 select test_harness.run_count_check('task_schedules: non-member B sees 0 rows of H', $q$select count(*) from public.task_schedules where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, true);
 select test_harness.run_count_check('task_occurrences: non-member B sees 0 rows of H', $q$select count(*) from public.task_occurrences where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, true);
 select test_harness.run_count_check('dispositions: non-member B sees 0 rows of H', $q$select count(*) from public.dispositions where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, true);
+select test_harness.run_count_check('notification_candidates: non-recipient B sees 0 rows of H', $q$select count(*) from public.notification_candidates where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, true);
 select test_harness.run_count_check('plans: non-member B sees 0 rows of H', $q$select count(*) from public.plans where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, true);
 select test_harness.run_count_check('plan_items: non-member B sees 0 rows of H (via plan join)', $q$select count(*) from public.plan_items pi join public.plans p on p.id = pi.plan_id where p.household_id = 'a1111111-0000-0000-0000-000000000001'$q$, true);
 select test_harness.run_count_check('audit_events: non-member B sees 0 rows of H', $q$select count(*) from public.audit_events where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, true);
@@ -334,6 +348,7 @@ select test_harness.run_count_check('task_definitions: A also sees system-proven
 select test_harness.run_exact_count_check('task_schedules: member A sees exactly H''s schedule', $q$select count(*) from public.task_schedules where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, 1);
 select test_harness.run_exact_count_check('task_occurrences: member A sees exactly H''s occurrence', $q$select count(*) from public.task_occurrences where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, 1);
 select test_harness.run_exact_count_check('dispositions: member A sees exactly H''s disposition', $q$select count(*) from public.dispositions where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, 1);
+select test_harness.run_exact_count_check('notification_candidates: recipient A sees exactly own candidate', $q$select count(*) from public.notification_candidates where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, 1);
 select test_harness.run_exact_count_check('plans: member A sees exactly H''s plan', $q$select count(*) from public.plans where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, 1);
 select test_harness.run_exact_count_check('plan_items: member A sees exactly H''s plan item (via plan join)', $q$select count(*) from public.plan_items pi join public.plans p on p.id = pi.plan_id where p.household_id = 'a1111111-0000-0000-0000-000000000001'$q$, 1);
 select test_harness.run_exact_count_check('audit_events: member A sees exactly H''s audit event', $q$select count(*) from public.audit_events where household_id = 'a1111111-0000-0000-0000-000000000001'$q$, 1);
@@ -419,6 +434,7 @@ select test_harness.run_write_denied_check('write-denied: A cannot DELETE own pe
 select test_harness.run_write_denied_check('write-denied: A cannot INSERT a task_schedule directly', $s$insert into public.task_schedules (household_id, pet_id, task_definition_id, recurrence, origin, obligation_class, active_range_start_date, created_by, updated_by) values ('a1111111-0000-0000-0000-000000000001', 'b1111111-0000-0000-0000-000000000001', 'c1111111-0000-0000-0000-000000000001', '{"type":"once","anchor_date":"2026-08-01","time_policy":"anytime"}'::jsonb, 'user_created', 'scheduled', '2026-08-01', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111')$s$);
 select test_harness.run_write_denied_check('write-denied: A cannot INSERT a task_occurrence directly', $s$insert into public.task_occurrences (occurrence_key, household_id, pet_id, schedule_id, local_due_date, original_local_due_date, time_policy, state, obligation_class, origin, created_by, updated_by) values ('SNEAKY-OCC', 'a1111111-0000-0000-0000-000000000001', 'b1111111-0000-0000-0000-000000000001', 'd1111111-0000-0000-0000-000000000001', '2026-08-01', '2026-08-01', 'anytime', 'pending', 'scheduled', 'user_created', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111')$s$);
 select test_harness.run_write_denied_check('write-denied: A cannot INSERT a disposition directly (must go through write path)', $s$insert into public.dispositions (household_id, occurrence_id, action, actor_user_id, recorded_at, effective_at, client_idempotency_key) values ('a1111111-0000-0000-0000-000000000001', 'e1111111-0000-0000-0000-000000000001', 'complete', '11111111-1111-1111-1111-111111111111', now(), now(), 'sneaky-disp-key')$s$);
+select test_harness.run_write_denied_check('write-denied: A cannot INSERT a notification candidate directly', $s$insert into public.notification_candidates (recipient_user_id, household_id, occurrence_id, class, source_ref, scheduled_for, dedupe_key) values ('11111111-1111-1111-1111-111111111111', 'a1111111-0000-0000-0000-000000000001', 'e1111111-0000-0000-0000-000000000001', 'task_due', '{}'::jsonb, now(), 'sneaky-notification')$s$);
 select test_harness.run_write_denied_check('write-denied: A cannot INSERT a plan directly', $s$insert into public.plans (household_id, pet_id, local_date, time_zone_snapshot, stage_snapshot, capacity_mode_applied, catalogue_version_set, input_digest, created_by, updated_by) values ('a1111111-0000-0000-0000-000000000001', 'b1111111-0000-0000-0000-000000000001', '2026-08-02', 'America/Los_Angeles', '{}'::jsonb, 'normal', '[]'::jsonb, 'sneaky-digest', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111')$s$);
 select test_harness.run_write_denied_check('write-denied: A cannot UPDATE own plan directly', $s$update public.plans set plan_version = plan_version + 1 where id = '01111111-0000-0000-0000-000000000001'$s$);
 select test_harness.run_write_denied_check('write-denied: A cannot INSERT a plan_item directly', $s$insert into public.plan_items (plan_id, item_key, kind, category, obligation_class, priority_tier, section) values ('01111111-0000-0000-0000-000000000001', 'sneaky-item', 'informational', 'routine', 'informational', 'P3', 'today')$s$);
@@ -439,12 +455,22 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
 select test_harness.run_write_denied_check('rpc-denied: authenticated cannot execute write_path_create_household', $s$select public.write_path_create_household('11111111-1111-1111-1111-111111111111'::uuid, 'sneaky-rpc-key', 'h', '{}'::jsonb, now(), now(), '{"name":"x","time_zone":"UTC"}'::jsonb)$s$);
 select test_harness.run_write_denied_check('rpc-denied: authenticated cannot execute write_path_create_pet', $s$select public.write_path_create_pet('11111111-1111-1111-1111-111111111111'::uuid, 'sneaky-rpc-key-2', 'h', '{}'::jsonb, now(), now(), '{"household_id":"a1111111-0000-0000-0000-000000000001","name":"x"}'::jsonb)$s$);
+select test_harness.run_write_denied_check('rpc-denied: authenticated cannot execute write_path_set_default_capacity', $s$select public.write_path_set_default_capacity('11111111-1111-1111-1111-111111111111'::uuid, 'sneaky-capacity', 'h', '{}'::jsonb, now(), now(), '{"household_id":"a1111111-0000-0000-0000-000000000001","default_capacity_mode":"busy"}'::jsonb)$s$);
+select test_harness.run_write_denied_check('rpc-denied: authenticated cannot execute write_path_accept_recommendation', $s$select public.write_path_accept_recommendation('11111111-1111-1111-1111-111111111111'::uuid, 'sneaky-rec', 'h', '{}'::jsonb, now(), now(), '{"plan_item_id":"e1111111-0000-0000-0000-000000000001"}'::jsonb)$s$);
+select test_harness.run_write_denied_check('rpc-denied: authenticated cannot execute write_path_create_recurring_task', $s$select public.write_path_create_recurring_task('11111111-1111-1111-1111-111111111111'::uuid, 'sneaky-recurring', 'h', '{}'::jsonb, now(), now(), '{}'::jsonb)$s$);
+select test_harness.run_write_denied_check('rpc-denied: authenticated cannot execute write_path_snooze_occurrence', $s$select public.write_path_snooze_occurrence('11111111-1111-1111-1111-111111111111'::uuid, 'sneaky-snooze', 'h', '{}'::jsonb, now(), now(), '{}'::jsonb)$s$);
+select test_harness.run_write_denied_check('rpc-denied: authenticated cannot execute routine schedule rebuild', $s$select public.write_path_rebuild_routine_schedules('11111111-1111-1111-1111-111111111111'::uuid, 'a1111111-0000-0000-0000-000000000001'::uuid, '{}'::jsonb, now())$s$);
+select test_harness.run_write_denied_check('rpc-denied: authenticated cannot execute elapsed plan close', $s$select public.close_elapsed_plans(now())$s$);
 
 reset role;
 set local role anon;
 select set_config('request.jwt.claims', '{"role":"anon"}', true);
 select test_harness.run_write_denied_check('rpc-denied: anon cannot execute write_path_create_household', $s$select public.write_path_create_household(null, 'sneaky-rpc-key-3', 'h', '{}'::jsonb, now(), now(), '{"name":"x","time_zone":"UTC"}'::jsonb)$s$);
 select test_harness.run_write_denied_check('rpc-denied: anon cannot execute write_path_create_pet', $s$select public.write_path_create_pet(null, 'sneaky-rpc-key-4', 'h', '{}'::jsonb, now(), now(), '{"household_id":"a1111111-0000-0000-0000-000000000001","name":"x"}'::jsonb)$s$);
+select test_harness.run_write_denied_check('rpc-denied: anon cannot execute write_path_set_default_capacity', $s$select public.write_path_set_default_capacity(null, 'sneaky-capacity-anon', 'h', '{}'::jsonb, now(), now(), '{"household_id":"a1111111-0000-0000-0000-000000000001","default_capacity_mode":"busy"}'::jsonb)$s$);
+select test_harness.run_write_denied_check('rpc-denied: anon cannot execute write_path_accept_recommendation', $s$select public.write_path_accept_recommendation(null, 'sneaky-rec-anon', 'h', '{}'::jsonb, now(), now(), '{"plan_item_id":"e1111111-0000-0000-0000-000000000001"}'::jsonb)$s$);
+select test_harness.run_write_denied_check('rpc-denied: anon cannot execute routine schedule rebuild', $s$select public.write_path_rebuild_routine_schedules(null, 'a1111111-0000-0000-0000-000000000001'::uuid, '{}'::jsonb, now())$s$);
+select test_harness.run_write_denied_check('rpc-denied: anon cannot execute elapsed plan close', $s$select public.close_elapsed_plans(now())$s$);
 reset role;
 
 -- ============================================================================

@@ -232,3 +232,63 @@ for (const filename of readdirSync(fixtureDirectory).filter((name) => name.endsW
     }
   });
 }
+
+test("homecoming keeps a puppy in settling-in for the first fourteen local days", () => {
+  const context = contextFromFixture({
+    scenario: "homecoming transition",
+    local_date: "2026-08-10",
+    capacity: "normal",
+    pet: {
+      birth_info: { kind: "exact", birth_date: "2026-05-01" },
+      expected_homecoming_date: "2026-08-01",
+    },
+    expect: {},
+  });
+
+  assert.equal(generatePlan(context).plan.stage_snapshot.stage_key, "settling_in");
+});
+
+test("input digest ignores generation timestamp and proposed persistence version", () => {
+  const fixture: Fixture = {
+    scenario: "meaningful digest",
+    local_date: "2026-08-10",
+    capacity: "normal",
+    expect: {},
+  };
+  const first = contextFromFixture(fixture);
+  const second = {
+    ...first,
+    now_instant: "2026-08-10T18:30:00Z",
+    plan_version: 42,
+  };
+
+  assert.equal(generatePlan(first).plan.input_digest, generatePlan(second).plan.input_digest);
+});
+
+test("an occurrence-only reschedule preserves plan identity while moving placement", () => {
+  const context = contextFromFixture({
+    scenario: "rescheduled occurrence identity",
+    local_date: "2026-11-01",
+    capacity: "essentials_only",
+    expect: {},
+  });
+  context.active_occurrences = [
+    {
+      ...occurrence("2026-11-01", {
+        key: "walk",
+        title: "Evening walk",
+        category: "routine",
+        obligation_class: "scheduled",
+      }),
+      occurrence_key: "schedule-walk:2026-11-01",
+      local_due_date: "2026-11-03",
+      original_local_due_date: "2026-11-01",
+    },
+  ];
+
+  const moved = generatePlan(context).items.find((item) => item.occurrence_id === "occ-walk");
+  assert.ok(moved);
+  assert.equal(moved.item_key, "occurrence:schedule-walk:2026-11-01");
+  assert.equal(moved.section, "coming_up");
+  assert.equal(moved.kind, "upcoming_preview");
+});

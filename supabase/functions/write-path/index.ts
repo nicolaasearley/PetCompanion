@@ -1,14 +1,25 @@
 import type {
+  AcceptRecommendationPayload,
+  ArchiveSchedulePayload,
+  CancelOccurrencePayload,
   CommandEnvelope,
   CommandFailure,
   CommandSuccess,
   CompleteOccurrencePayload,
   CreateHouseholdPayload,
   CreatePetPayload,
+  CreateRecurringTaskPayload,
   CreateTaskPayload,
+  EditOccurrencePayload,
+  EditScheduleFuturePayload,
+  RecurrenceRulePayload,
+  RescheduleOccurrencePayload,
+  SetDefaultCapacityPayload,
   SetRoutinePreferencesPayload,
   SkipItemPayload,
-  SliceACommand,
+  WritePathCommand,
+  SnoozeOccurrencePayload,
+  UndoSkipPayload,
   UndoCompletionPayload,
 } from "./envelope.ts";
 
@@ -25,11 +36,21 @@ interface AuthUser {
   id: string;
 }
 
-const implementedCommands: ReadonlySet<SliceACommand> = new Set([
+const implementedCommands: ReadonlySet<WritePathCommand> = new Set([
   "create_household",
   "create_pet",
   "set_routine_preferences",
+  "set_default_capacity",
   "create_task",
+  "create_recurring_task",
+  "edit_occurrence",
+  "cancel_occurrence",
+  "snooze_occurrence",
+  "reschedule_occurrence",
+  "undo_skip",
+  "edit_schedule_future",
+  "archive_schedule",
+  "accept_recommendation",
   "complete_occurrence",
   "undo_completion",
   "skip_item",
@@ -93,8 +114,29 @@ Deno.serve(async (request) => {
     } else if (envelope.command === "set_routine_preferences") {
       assertSetRoutinePreferencesPayload(envelope.payload);
       await assertActiveMembership(user.id, envelope.payload.household_id);
+    } else if (envelope.command === "set_default_capacity") {
+      assertSetDefaultCapacityPayload(envelope.payload);
+      await assertActiveMembership(user.id, envelope.payload.household_id);
     } else if (envelope.command === "create_task") {
       assertCreateTaskPayload(envelope.payload);
+    } else if (envelope.command === "create_recurring_task") {
+      assertCreateRecurringTaskPayload(envelope.payload);
+    } else if (envelope.command === "edit_occurrence") {
+      assertEditOccurrencePayload(envelope.payload);
+    } else if (envelope.command === "cancel_occurrence") {
+      assertCancelOccurrencePayload(envelope.payload);
+    } else if (envelope.command === "snooze_occurrence") {
+      assertSnoozeOccurrencePayload(envelope.payload);
+    } else if (envelope.command === "reschedule_occurrence") {
+      assertRescheduleOccurrencePayload(envelope.payload);
+    } else if (envelope.command === "undo_skip") {
+      assertUndoSkipPayload(envelope.payload);
+    } else if (envelope.command === "edit_schedule_future") {
+      assertEditScheduleFuturePayload(envelope.payload);
+    } else if (envelope.command === "archive_schedule") {
+      assertArchiveSchedulePayload(envelope.payload);
+    } else if (envelope.command === "accept_recommendation") {
+      assertAcceptRecommendationPayload(envelope.payload);
     } else if (envelope.command === "complete_occurrence") {
       assertCompleteOccurrencePayload(envelope.payload);
     } else if (envelope.command === "undo_completion") {
@@ -139,6 +181,11 @@ function assertCreateHouseholdPayload(value: unknown): asserts value is CreateHo
   if (!isRecord(value)) throw new Error("payload must be an object.");
   if (typeof value.name !== "string" || value.name.trim() === "") throw new Error("payload.name is required.");
   if (typeof value.time_zone !== "string" || value.time_zone.trim() === "") throw new Error("payload.time_zone is required.");
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value.time_zone }).format();
+  } catch {
+    throw new Error("payload.time_zone must be a valid IANA time zone.");
+  }
   if ("default_capacity_mode" in value && value.default_capacity_mode !== undefined && !["normal", "busy", "essentials_only", "custom"].includes(String(value.default_capacity_mode))) {
     throw new Error("payload.default_capacity_mode is invalid.");
   }
@@ -149,7 +196,9 @@ function assertCreatePetPayload(value: unknown): asserts value is CreatePetPaylo
   if (typeof value.household_id !== "string" || value.household_id.trim() === "") throw new Error("payload.household_id is required.");
   if (typeof value.name !== "string" || value.name.trim() === "") throw new Error("payload.name is required.");
   if (value.species !== undefined && value.species !== "dog") throw new Error("payload.species must be dog in MVP.");
-  if (value.birth_date_kind !== "exact" && value.birth_date_kind !== "estimated") throw new Error("payload.birth_date_kind must be exact or estimated.");
+  if (!["exact", "estimated", "unknown"].includes(String(value.birth_date_kind))) {
+    throw new Error("payload.birth_date_kind must be exact, estimated, or unknown.");
+  }
 
   if (value.birth_date_kind === "exact") {
     if (typeof value.birth_date !== "string") throw new Error("payload.birth_date is required for exact birth date.");
@@ -168,6 +217,12 @@ function assertCreatePetPayload(value: unknown): asserts value is CreatePetPaylo
     if (value.birth_date !== undefined) throw new Error("payload.birth_date is not allowed for estimated birth date.");
   }
 
+  if (value.birth_date_kind === "unknown") {
+    if (value.birth_date !== undefined || value.estimated_age_weeks !== undefined || value.estimated_as_of_date !== undefined) {
+      throw new Error("birth date fields are not allowed when payload.birth_date_kind is unknown.");
+    }
+  }
+
   if (typeof value.birth_date === "string" && isFutureDate(value.birth_date)) {
     throw new Error("Future birth_date is rejected in MVP.");
   }
@@ -182,6 +237,14 @@ function assertSetRoutinePreferencesPayload(value: unknown): asserts value is Se
   if (!isRecord(value.routine_windows)) throw new Error("payload.routine_windows must be an object.");
   if (value.meal_template_ref !== undefined && value.meal_template_ref !== null && typeof value.meal_template_ref !== "string") {
     throw new Error("payload.meal_template_ref must be a string or null.");
+  }
+}
+
+function assertSetDefaultCapacityPayload(value: unknown): asserts value is SetDefaultCapacityPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.household_id, "payload.household_id");
+  if (!["normal", "busy", "essentials_only", "custom"].includes(String(value.default_capacity_mode))) {
+    throw new Error("payload.default_capacity_mode is invalid.");
   }
 }
 
@@ -214,6 +277,193 @@ function assertCreateTaskPayload(value: unknown): asserts value is CreateTaskPay
 
   for (const field of ["task_definition_id", "schedule_id", "occurrence_id"] as const) {
     if (value[field] !== undefined) assertNonEmptyString(value[field], `payload.${field}`);
+  }
+}
+
+function assertCreateRecurringTaskPayload(value: unknown): asserts value is CreateRecurringTaskPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.pet_id, "payload.pet_id");
+  assertNonEmptyString(value.title, "payload.title");
+  assertRecurrenceRule(value.recurrence, "payload.recurrence");
+  assertAssignment(value.assignment, "payload.assignment");
+  if (value.category !== undefined && !taskCategories.includes(String(value.category))) {
+    throw new Error("payload.category is invalid.");
+  }
+  if (value.obligation_class !== undefined && !["required", "scheduled"].includes(String(value.obligation_class))) {
+    throw new Error("payload.obligation_class must be required or scheduled.");
+  }
+  if (value.reminder_config !== undefined && !isRecord(value.reminder_config)) {
+    throw new Error("payload.reminder_config must be an object.");
+  }
+  for (const field of ["task_definition_id", "schedule_id"] as const) {
+    if (value[field] !== undefined) assertNonEmptyString(value[field], `payload.${field}`);
+  }
+}
+
+function assertEditOccurrencePayload(value: unknown): asserts value is EditOccurrencePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.occurrence_id, "payload.occurrence_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.title !== undefined) assertNonEmptyString(value.title, "payload.title");
+  if (value.assignment !== undefined) assertAssignment(value.assignment, "payload.assignment");
+  if (value.time_policy !== undefined) assertTimeShape(value);
+  if (value.note !== undefined && typeof value.note !== "string") throw new Error("payload.note must be a string.");
+  if (value.title === undefined && value.assignment === undefined && value.time_policy === undefined) {
+    throw new Error("edit_occurrence requires at least one editable field.");
+  }
+}
+
+function assertCancelOccurrencePayload(value: unknown): asserts value is CancelOccurrencePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.occurrence_id, "payload.occurrence_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.confirm_required !== undefined && typeof value.confirm_required !== "boolean") {
+    throw new Error("payload.confirm_required must be boolean.");
+  }
+  if (value.note !== undefined && typeof value.note !== "string") throw new Error("payload.note must be a string.");
+}
+
+function assertSnoozeOccurrencePayload(value: unknown): asserts value is SnoozeOccurrencePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.occurrence_id, "payload.occurrence_id");
+  if (typeof value.snooze_until !== "string" || Number.isNaN(Date.parse(value.snooze_until))) {
+    throw new Error("payload.snooze_until must be an ISO timestamp.");
+  }
+  if (value.note !== undefined && typeof value.note !== "string") throw new Error("payload.note must be a string.");
+}
+
+function assertRescheduleOccurrencePayload(value: unknown): asserts value is RescheduleOccurrencePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.occurrence_id, "payload.occurrence_id");
+  assertExpectedRevision(value.expected_revision);
+  assertLocalDate(value.local_due_date, "payload.local_due_date");
+  if (value.time_policy !== undefined) assertTimeShape(value);
+  if (value.note !== undefined && typeof value.note !== "string") throw new Error("payload.note must be a string.");
+}
+
+function assertUndoSkipPayload(value: unknown): asserts value is UndoSkipPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.occurrence_id, "payload.occurrence_id");
+  if (value.note !== undefined && typeof value.note !== "string") throw new Error("payload.note must be a string.");
+}
+
+function assertEditScheduleFuturePayload(value: unknown): asserts value is EditScheduleFuturePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.schedule_id, "payload.schedule_id");
+  assertExpectedRevision(value.expected_revision);
+  assertLocalDate(value.split_date, "payload.split_date");
+  assertRecurrenceRule(value.recurrence, "payload.recurrence");
+  if (value.recurrence.anchor_date !== value.split_date) {
+    throw new Error("payload.recurrence.anchor_date must equal payload.split_date.");
+  }
+  if (value.title !== undefined) assertNonEmptyString(value.title, "payload.title");
+  if (value.assignment !== undefined) assertAssignment(value.assignment, "payload.assignment");
+  if (value.reminder_config !== undefined && value.reminder_config !== null && !isRecord(value.reminder_config)) {
+    throw new Error("payload.reminder_config must be an object or null.");
+  }
+  for (const field of ["successor_schedule_id", "successor_task_definition_id"] as const) {
+    if (value[field] !== undefined) assertNonEmptyString(value[field], `payload.${field}`);
+  }
+  if (value.note !== undefined && typeof value.note !== "string") throw new Error("payload.note must be a string.");
+}
+
+function assertArchiveSchedulePayload(value: unknown): asserts value is ArchiveSchedulePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.schedule_id, "payload.schedule_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.confirm_required !== undefined && typeof value.confirm_required !== "boolean") {
+    throw new Error("payload.confirm_required must be boolean.");
+  }
+  if (value.note !== undefined && typeof value.note !== "string") throw new Error("payload.note must be a string.");
+}
+
+function assertAcceptRecommendationPayload(value: unknown): asserts value is AcceptRecommendationPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.plan_item_id, "payload.plan_item_id");
+  if (value.complete !== undefined && typeof value.complete !== "boolean") {
+    throw new Error("payload.complete must be boolean.");
+  }
+  if (value.pinned !== undefined && typeof value.pinned !== "boolean") {
+    throw new Error("payload.pinned must be boolean.");
+  }
+  if (value.note !== undefined && typeof value.note !== "string") {
+    throw new Error("payload.note must be a string.");
+  }
+}
+
+const taskCategories = [
+  "health", "feeding", "routine", "training", "socialization",
+  "grooming", "event", "preparation", "life", "household",
+];
+
+function assertExpectedRevision(value: unknown): asserts value is number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error("payload.expected_revision must be a positive integer.");
+  }
+}
+
+function assertAssignment(value: unknown, field: string): asserts value is string {
+  if (typeof value !== "string" || !/^(unassigned|anyone|member:[0-9a-fA-F-]{36})$/.test(value)) {
+    throw new Error(`${field} must be unassigned, anyone, or member:<user_uuid>.`);
+  }
+}
+
+function assertTimeShape(value: Record<string, unknown>): void {
+  if (!["anytime", "window", "exact_time"].includes(String(value.time_policy))) {
+    throw new Error("payload.time_policy is invalid.");
+  }
+  if (value.time_policy === "exact_time") {
+    if (typeof value.exact_time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.exact_time)) {
+      throw new Error("payload.exact_time must be HH:MM for exact_time.");
+    }
+    if (value.window_ref !== undefined) throw new Error("payload.window_ref is not allowed for exact_time.");
+  } else if (value.time_policy === "window") {
+    if (!["morning", "midday", "afternoon", "evening", "sleep"].includes(String(value.window_ref))) {
+      throw new Error("payload.window_ref is required and invalid for window.");
+    }
+    if (value.exact_time !== undefined) throw new Error("payload.exact_time is not allowed for window.");
+  } else if (value.exact_time !== undefined || value.window_ref !== undefined) {
+    throw new Error("anytime does not accept payload.exact_time or payload.window_ref.");
+  }
+}
+
+function assertRecurrenceRule(value: unknown, field: string): asserts value is RecurrenceRulePayload {
+  if (!isRecord(value)) throw new Error(`${field} must be an object.`);
+  const types = ["once", "daily", "weekdays", "every_n_days", "weekly", "monthly_safe", "interval_after_completion"];
+  if (!types.includes(String(value.type))) throw new Error(`${field}.type is unsupported.`);
+  assertLocalDate(value.anchor_date, `${field}.anchor_date`);
+  assertTimeShape(value);
+  if (value.until !== undefined) {
+    assertLocalDate(value.until, `${field}.until`);
+    if (String(value.until) < String(value.anchor_date)) throw new Error(`${field}.until must not precede anchor_date.`);
+  }
+  if (value.count !== undefined && (typeof value.count !== "number" || !Number.isInteger(value.count) || value.count < 1)) {
+    throw new Error(`${field}.count must be a positive integer.`);
+  }
+  if (value.type === "weekdays") {
+    if (!Array.isArray(value.weekdays) || value.weekdays.length < 1 || value.weekdays.length > 7) {
+      throw new Error(`${field}.weekdays must contain 1-7 weekdays.`);
+    }
+    const allowed = new Set(["1", "2", "3", "4", "5", "6", "7", "mon", "monday", "tue", "tuesday", "wed", "wednesday", "thu", "thursday", "fri", "friday", "sat", "saturday", "sun", "sunday"]);
+    if (!value.weekdays.every((day) => allowed.has(String(day).toLowerCase()))) {
+      throw new Error(`${field}.weekdays contains an invalid weekday.`);
+    }
+  } else if (value.weekdays !== undefined) {
+    throw new Error(`${field}.weekdays is only valid for weekdays recurrence.`);
+  }
+  if (value.type === "every_n_days" || value.type === "interval_after_completion") {
+    if (typeof value.interval !== "number" || !Number.isInteger(value.interval) || value.interval < 1) {
+      throw new Error(`${field}.interval must be a positive integer.`);
+    }
+  } else if (value.interval !== undefined) {
+    throw new Error(`${field}.interval is only valid for interval recurrence.`);
+  }
+  if (value.type === "monthly_safe") {
+    if (typeof value.day_of_month !== "number" || !Number.isInteger(value.day_of_month) || value.day_of_month < 1 || value.day_of_month > 31) {
+      throw new Error(`${field}.day_of_month must be 1-31.`);
+    }
+  } else if (value.day_of_month !== undefined) {
+    throw new Error(`${field}.day_of_month is only valid for monthly_safe recurrence.`);
   }
 }
 
@@ -343,7 +593,7 @@ async function parseRestResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
   const parsed = text ? JSON.parse(text) as T : null as T;
   if (!response.ok) {
-    const record = isRecord(parsed) ? parsed : {};
+    const record: Record<string, unknown> = isRecord(parsed) ? parsed : {};
     throw taggedError(
       typeof record.code === "string" ? record.code : "DATABASE_ERROR",
       typeof record.message === "string" ? record.message : response.statusText,
@@ -366,11 +616,11 @@ function env(name: string): string {
   return value;
 }
 
-function success<T>(command: SliceACommand, result: T, idempotentReplay: boolean): CommandSuccess<T> {
+function success<T>(command: WritePathCommand, result: T, idempotentReplay: boolean): CommandSuccess<T> {
   return { ok: true, command, idempotent_replay: idempotentReplay, result };
 }
 
-function failure(code: string, message: string, command?: SliceACommand, idempotentReplay = false): CommandFailure {
+function failure(code: string, message: string, command?: WritePathCommand, idempotentReplay = false): CommandFailure {
   return { ok: false, command, code, message, idempotent_replay: idempotentReplay };
 }
 
@@ -423,6 +673,7 @@ function codeOf(error: unknown): string {
     if (error.code === "42501") return "FORBIDDEN";
     if (error.code === "23505") return "IDEMPOTENCY_CONFLICT";
     if (error.code === "PC001") return "REQUIRED_CONFIRMATION";
+    if (error.code === "40001") return "REVISION_CONFLICT";
     if (error.code === "22023" || error.code === "23514" || error.code === "22P02") return "VALIDATION_FAILED";
     return error.code;
   }
@@ -438,6 +689,7 @@ function statusForError(code: string | null | undefined): number {
     case "FORBIDDEN":
       return 403;
     case "IDEMPOTENCY_CONFLICT":
+    case "REVISION_CONFLICT":
       return 409;
     case "VALIDATION_FAILED":
     case "REQUIRED_CONFIRMATION":

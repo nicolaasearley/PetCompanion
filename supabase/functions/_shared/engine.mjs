@@ -95,6 +95,9 @@ function deriveAgeWeeks(context) {
     return { age_weeks: Math.max(0, daysBetween(birth.birth_date, context.local_date) / 7), estimated: false };
   }
   if (birth.kind === "estimated") {
+    if (typeof birth.estimated_age_weeks !== "number" || !Number.isFinite(birth.estimated_age_weeks) || typeof birth.estimated_as_of_date !== "string") {
+      return { age_weeks: null, estimated: false };
+    }
     return {
       age_weeks: Math.max(0, birth.estimated_age_weeks + daysBetween(birth.estimated_as_of_date, context.local_date) / 7),
       estimated: true
@@ -117,6 +120,8 @@ function resolveStage(context, stages) {
     stageKey = "preparing";
   } else if (context.pet.stage_override) {
     stageKey = context.pet.stage_override;
+  } else if (context.pet.expected_homecoming_date && daysBetween(context.pet.expected_homecoming_date, context.local_date) >= 0 && daysBetween(context.pet.expected_homecoming_date, context.local_date) < 14) {
+    stageKey = "settling_in";
   } else if (age.age_weeks !== null) {
     const numericStages = stages.map((stage) => ({ stage, minimum: guidanceMinimumWeeks(stage) })).filter((entry) => entry.minimum !== null).filter((entry) => entry.minimum <= age.age_weeks).sort((a, b) => b.minimum - a.minimum || b.stage.position - a.stage.position);
     stageKey = numericStages[0]?.stage.stage_key ?? "settling_in";
@@ -593,7 +598,10 @@ function generatePlan(context) {
       recommendation_budget: recommendationBudget,
       plan_version: context.plan_version,
       catalogue_version_set: versions,
-      input_digest: digest(context),
+      // Runtime timestamps and the proposed next persistence version are
+      // output metadata, not generation inputs. Excluding them makes the
+      // digest useful for detecting a genuinely unchanged same-day plan.
+      input_digest: digest((({ now_instant: _now, plan_version: _version, ...inputs }) => inputs)(context)),
       status: "open",
       generated_at: context.now_instant
     },

@@ -115,6 +115,72 @@ select test_commands.assert_true(
   'set_routine_preferences replay creates one command_log row',
   (select count(*) = 1 from public.command_log where actor_user_id = 'a1000000-0000-0000-0000-000000000001' and client_idempotency_key = 'commands-pref-1')
 );
+select test_commands.assert_true(
+  'set_routine_preferences materializes the reviewed daily routine schedules',
+  (select count(*) = 6
+   from public.task_schedules
+   where household_id = 'a2000000-0000-0000-0000-000000000001'
+     and pet_id = 'a4000000-0000-0000-0000-000000000001'
+     and status = 'active'
+     and origin_ref->>'routine_managed' = 'true')
+);
+
+select public.write_path_set_routine_preferences(
+  'a1000000-0000-0000-0000-000000000001', 'commands-pref-2', 'hash-pref-2',
+  '{"command":"set_routine_preferences"}',
+  '2026-07-26 12:00:30+00', null,
+  '{"household_id":"a2000000-0000-0000-0000-000000000001","routine_windows":{"morning":{"start_hour":6,"end_hour":9},"midday":{"start_hour":11,"end_hour":13},"evening":{"start_hour":17,"end_hour":21},"sleep":{"start_hour":22,"end_hour":6},"meals_per_day":2}}'
+);
+select test_commands.assert_true(
+  'routine update normalizes iOS time bands and supersedes managed schedules',
+  (select routine_windows #>> '{morning,start}' = '06:00'
+      and routine_windows #>> '{sleep,end}' = '06:00'
+      and meal_template_ref = '2_meals'
+   from public.household_preferences
+   where household_id = 'a2000000-0000-0000-0000-000000000001')
+  and (select count(*) = 5
+       from public.task_schedules
+       where pet_id = 'a4000000-0000-0000-0000-000000000001'
+         and status = 'active'
+         and origin_ref->>'routine_managed' = 'true')
+  and (select count(*) = 6
+       from public.task_schedules
+       where pet_id = 'a4000000-0000-0000-0000-000000000001'
+         and status = 'archived'
+         and origin_ref->>'routine_managed' = 'true')
+);
+
+select public.write_path_set_default_capacity(
+  'a1000000-0000-0000-0000-000000000001', 'commands-capacity-1', 'hash-capacity-1',
+  '{"command":"set_default_capacity"}',
+  '2026-07-26 12:00:45+00', null,
+  '{"household_id":"a2000000-0000-0000-0000-000000000001","default_capacity_mode":"busy"}'
+);
+select test_commands.assert_true(
+  'set_default_capacity durably updates household and generation preference',
+  (select default_capacity_mode = 'busy' from public.households
+   where id = 'a2000000-0000-0000-0000-000000000001')
+  and (select default_capacity_mode = 'busy' from public.household_preferences
+       where household_id = 'a2000000-0000-0000-0000-000000000001')
+  and (select count(*) = 1 from public.audit_events
+       where household_id = 'a2000000-0000-0000-0000-000000000001'
+         and action = 'capacity.default_changed')
+);
+
+select public.write_path_create_pet(
+  'a1000000-0000-0000-0000-000000000001', 'commands-pet-unknown', 'hash-pet-unknown',
+  '{"command":"create_pet"}',
+  '2026-07-26 12:00:50+00', null,
+  '{"id":"a4000000-0000-0000-0000-000000000003","household_id":"a2000000-0000-0000-0000-000000000001","name":"Future Pup","species":"dog","birth_date_kind":"unknown","homecoming_date":"2026-08-15"}'
+);
+select test_commands.assert_true(
+  'create_pet preserves an explicitly unknown birth date without false precision',
+  (select birth_date_kind::text = 'unknown'
+      and birth_date is null
+      and estimated_age_weeks is null
+      and estimated_as_of_date is null
+   from public.pets where id = 'a4000000-0000-0000-0000-000000000003')
+);
 
 -- 2. One-time task: all three layers, deterministic key, and replay.
 select public.write_path_create_task(
@@ -276,6 +342,81 @@ select test_commands.assert_true(
   'skip_item accepts an explicitly confirmed required occurrence',
   (select state = 'skipped' from public.task_occurrences where id = 'a7000000-0000-0000-0000-000000000003')
   and (select count(*) = 1 from public.dispositions where occurrence_id = 'a7000000-0000-0000-0000-000000000003' and action = 'skip')
+);
+
+-- 6. A recommendation completion is promoted to the uniform task model.
+insert into public.plans (
+  id, household_id, pet_id, local_date, time_zone_snapshot, stage_snapshot,
+  capacity_mode_applied, catalogue_version_set, input_digest, status,
+  created_by, updated_by
+) values (
+  'a8000000-0000-0000-0000-000000000001',
+  'a2000000-0000-0000-0000-000000000001',
+  'a4000000-0000-0000-0000-000000000001',
+  '2026-07-26', 'America/Toronto', '{"stage_key":"foundations"}',
+  'busy', '[]', 'commands-rec-plan', 'open',
+  'a1000000-0000-0000-0000-000000000001',
+  'a1000000-0000-0000-0000-000000000001'
+);
+insert into public.plan_items (
+  id, plan_id, item_key, kind, recommendation_rule_ref, content_ref, title,
+  category, obligation_class, priority_tier, section, time_window, effort_band,
+  explanation_text, display_state, origin
+) values (
+  'a9000000-0000-0000-0000-000000000001',
+  'a8000000-0000-0000-0000-000000000001',
+  'recommendation:commands-test', 'recommendation',
+  '{"content_id":"rule.brushing","version":1}',
+  '{"content_id":"care.brushing","version":1}',
+  'Try a calm brushing session', 'grooming', 'recommended', 'P3',
+  'recommended', 'evening', 'tiny', 'A calm minute is enough.',
+  'planned', 'development_rule'
+);
+
+select public.write_path_accept_recommendation(
+  'a1000000-0000-0000-0000-000000000001',
+  'commands-accept-rec-1', 'hash-accept-rec-1',
+  '{"command":"accept_recommendation"}',
+  '2026-07-26 12:20:00+00', null,
+  '{"plan_item_id":"a9000000-0000-0000-0000-000000000001","complete":true,"pinned":false}'
+);
+select test_commands.assert_true(
+  'accept_recommendation promotes and completes through task/disposition history',
+  (select kind = 'obligation'
+      and occurrence_id is not null
+      and recommendation_rule_ref is null
+      and display_state = 'completed'
+      and section = 'completed'
+   from public.plan_items where id = 'a9000000-0000-0000-0000-000000000001')
+  and (select count(*) = 1
+       from public.task_occurrences o
+       join public.plan_items pi on pi.occurrence_id = o.id
+       where pi.id = 'a9000000-0000-0000-0000-000000000001'
+         and o.state = 'completed')
+  and (select count(*) = 1
+       from public.dispositions d
+       join public.plan_items pi on pi.occurrence_id = d.occurrence_id
+       where pi.id = 'a9000000-0000-0000-0000-000000000001'
+         and d.action = 'complete'
+         and not d.superseded)
+  and (select recommendations_frozen_at is not null
+       from public.plans where id = 'a8000000-0000-0000-0000-000000000001')
+);
+select public.write_path_accept_recommendation(
+  'a1000000-0000-0000-0000-000000000001',
+  'commands-accept-rec-1', 'hash-accept-rec-1',
+  '{"command":"accept_recommendation"}',
+  '2026-07-26 12:20:00+00', null,
+  '{"plan_item_id":"a9000000-0000-0000-0000-000000000001","complete":true,"pinned":false}'
+);
+select test_commands.assert_true(
+  'accept_recommendation replay does not duplicate promoted task rows',
+  (select count(*) = 1 from public.task_occurrences o
+   join public.plan_items pi on pi.occurrence_id = o.id
+   where pi.id = 'a9000000-0000-0000-0000-000000000001')
+  and (select count(*) = 1 from public.command_log
+       where actor_user_id = 'a1000000-0000-0000-0000-000000000001'
+         and client_idempotency_key = 'commands-accept-rec-1')
 );
 
 do $$

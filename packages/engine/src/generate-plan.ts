@@ -144,6 +144,16 @@ function deriveAgeWeeks(context: GenerationContext): { age_weeks: number | null;
     return { age_weeks: Math.max(0, daysBetween(birth.birth_date, context.local_date) / 7), estimated: false };
   }
   if (birth.kind === "estimated") {
+    // The database can intentionally carry an unknown birth date. Older
+    // generation-context payloads encode that as an estimated shape with null
+    // values, so keep the engine fail-safe instead of inventing an age.
+    if (
+      typeof birth.estimated_age_weeks !== "number" ||
+      !Number.isFinite(birth.estimated_age_weeks) ||
+      typeof birth.estimated_as_of_date !== "string"
+    ) {
+      return { age_weeks: null, estimated: false };
+    }
     return {
       age_weeks: Math.max(0, birth.estimated_age_weeks + daysBetween(birth.estimated_as_of_date, context.local_date) / 7),
       estimated: true,
@@ -168,6 +178,14 @@ function resolveStage(context: GenerationContext, stages: DevelopmentStageRow[])
     stageKey = "preparing";
   } else if (context.pet.stage_override) {
     stageKey = context.pet.stage_override;
+  } else if (
+    context.pet.expected_homecoming_date &&
+    daysBetween(context.pet.expected_homecoming_date, context.local_date) >= 0 &&
+    daysBetween(context.pet.expected_homecoming_date, context.local_date) < 14
+  ) {
+    // The first two weeks in the household are a distinct developmental
+    // context regardless of chronological age.
+    stageKey = "settling_in";
   } else if (age.age_weeks !== null) {
     const numericStages = stages
       .map((stage) => ({ stage, minimum: guidanceMinimumWeeks(stage) }))
@@ -839,7 +857,10 @@ export function generatePlan(context: GenerationContext): PlanResult {
       recommendation_budget: recommendationBudget,
       plan_version: context.plan_version,
       catalogue_version_set: versions,
-      input_digest: digest(context),
+      // Runtime timestamps and the proposed next persistence version are
+      // output metadata, not generation inputs. Excluding them makes the
+      // digest useful for detecting a genuinely unchanged same-day plan.
+      input_digest: digest((({ now_instant: _now, plan_version: _version, ...inputs }) => inputs)(context)),
       status: "open",
       generated_at: context.now_instant,
     },

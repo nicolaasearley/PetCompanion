@@ -59,6 +59,12 @@ export async function generateAndPersistPlan(
   const pet = await verifyPetAccess(actorUserId, input.pet_id);
   await verifyMembership(actorUserId, pet.household_id);
 
+  // Day close is safe and idempotent. Running it at every generation request
+  // gives local/private deployments automatic lifecycle cleanup without
+  // requiring an external scheduler; hosted deployments may additionally
+  // invoke the same RPC on a cron.
+  await rpc<Json>("close_elapsed_plans", { at_instant: atInstant });
+
   const context = await rpc<Record<string, Json>>("write_path_generation_context", {
     actor_id: actorUserId,
     target_pet_id: input.pet_id,
@@ -66,9 +72,18 @@ export async function generateAndPersistPlan(
     at_instant: atInstant,
   });
 
-  // `force` is accepted for the stable API. This WP always regenerates open
-  // same-day plans; stable item keys and the persistence upsert prevent dupes.
-  void input.force;
+  // The first generated plan is the stable daily set. Passive refreshes return
+  // it verbatim so recommendations do not churn or increment plan_version.
+  // Capacity changes are intentional mutations and therefore regenerate.
+  const existing = await loadOpenPlan(input.pet_id, String(context.local_date));
+  if (existing) {
+    const persistedPlan = isRecord(existing) && isRecord(existing.plan) ? existing.plan : null;
+    const recommendationsFrozen = persistedPlan?.recommendations_frozen_at != null;
+    if (recommendationsFrozen || (!input.force && input.capacity_override === undefined)) {
+      return existing;
+    }
+  }
+
   const generated = generatePlan(context) as EngineResult;
 
   return rpc<Json>("write_path_persist_plan", {
@@ -77,6 +92,27 @@ export async function generateAndPersistPlan(
     items_input: generated.items,
     diagnostics_input: generated.diagnostics,
   });
+}
+
+async function loadOpenPlan(petId: string, localDate: string): Promise<Json | null> {
+  const planParams = new URLSearchParams({
+    select: "*",
+    pet_id: `eq.${petId}`,
+    local_date: `eq.${localDate}`,
+    status: "eq.open",
+    limit: "1",
+  });
+  const plans = await restGet<Array<Record<string, Json>>>(`plans?${planParams}`);
+  const plan = plans[0];
+  if (!plan || typeof plan.id !== "string") return null;
+
+  const itemParams = new URLSearchParams({
+    select: "*",
+    plan_id: `eq.${plan.id}`,
+    order: "section.asc,priority_tier.asc,due_time.asc.nullslast,title.asc,item_key.asc",
+  });
+  const items = await restGet<Json[]>(`plan_items?${itemParams}`);
+  return { plan, items };
 }
 
 async function parseBody(request: Request): Promise<GeneratePlanBody> {

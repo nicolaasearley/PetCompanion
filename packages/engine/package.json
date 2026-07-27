@@ -10,5 +10,9 @@
     "bundle:edge": "npx --yes esbuild src/index.ts --bundle --platform=neutral --format=esm --target=es2022 --outfile=../../supabase/functions/_shared/engine.mjs --banner:js=\"// GENERATED FILE — run: npm run bundle:edge (from packages/engine). DO NOT EDIT.\"",
     "test": "node --experimental-strip-types --test test/fixtures.test.ts",
     "typecheck": "node scripts/run-typecheck.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.5.4"
   }
 }

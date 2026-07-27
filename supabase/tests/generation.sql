@@ -390,6 +390,38 @@ begin
   );
 end $$;
 
+-- Timezone-aware automatic close only closes plans whose own local day elapsed.
+insert into public.plans (
+  id, household_id, pet_id, local_date, time_zone_snapshot, stage_snapshot,
+  capacity_mode_applied, catalogue_version_set, input_digest, status,
+  created_by, updated_by
+) values (
+  'b8000000-0000-4000-8000-000000000002',
+  'b2000000-0000-4000-8000-000000000001',
+  'b4000000-0000-4000-8000-000000000001',
+  '2024-03-01', 'America/Toronto', '{"stage_key":"foundations"}',
+  'normal', '[]', 'digest-current-day', 'open',
+  'b1000000-0000-4000-8000-000000000001',
+  'b1000000-0000-4000-8000-000000000001'
+);
+do $$
+declare
+  close_result jsonb;
+begin
+  close_result := public.close_elapsed_plans('2024-03-02 04:30:00+00');
+  perform test_generation.record(
+    'elapsed close respects each plan timezone local date',
+    (close_result->>'plans_closed')::integer = 0
+    and (select status = 'open' from public.plans where id = 'b8000000-0000-4000-8000-000000000002')
+  );
+  close_result := public.close_elapsed_plans('2024-03-02 05:30:00+00');
+  perform test_generation.record(
+    'elapsed close runs after local midnight',
+    (close_result->>'plans_closed')::integer = 1
+    and (select status = 'closed' from public.plans where id = 'b8000000-0000-4000-8000-000000000002')
+  );
+end $$;
+
 select test_generation.expect_sqlstate(
   'closed plans refuse regeneration',
   $sql$select public.write_path_persist_plan(

@@ -265,6 +265,59 @@ test("input digest ignores generation timestamp and proposed persistence version
   assert.equal(generatePlan(first).plan.input_digest, generatePlan(second).plan.input_digest);
 });
 
+test("coming up previews at most three future items, nearest first", () => {
+  // Mirrors a real household: onboarding creates six daily routine schedules,
+  // each materialized across the next fortnight. Every future occurrence used
+  // to be previewed, which produced forty-two Coming up rows.
+  const context = contextFromFixture({
+    scenario: "recurring routines fill the preview window",
+    local_date: "2026-08-10",
+    capacity: "normal",
+    expect: {},
+  });
+  const routines: Array<{ key: string; title: string; window: "morning" | "evening" }> = [
+    { key: "breakfast", title: "Breakfast", window: "morning" },
+    { key: "potty-am", title: "Morning potty routine", window: "morning" },
+    { key: "dinner", title: "Evening meal", window: "evening" },
+    { key: "potty-pm", title: "Evening potty routine", window: "evening" },
+    { key: "wind-down", title: "Wind-down routine", window: "evening" },
+    { key: "midday-potty", title: "Midday potty routine", window: "morning" },
+  ];
+  context.active_occurrences = Array.from({ length: 7 }, (_, dayOffset) =>
+    routines.map((routine) => {
+      const dueDate = `2026-08-${String(10 + dayOffset).padStart(2, "0")}`;
+      return {
+        ...occurrence(dueDate, {
+          key: routine.key,
+          title: routine.title,
+          category: "routine",
+          obligation_class: "scheduled",
+          window_ref: routine.window,
+          due_date: dueDate,
+        }),
+        id: `occ-${routine.key}-${dueDate}`,
+        occurrence_key: `schedule-${routine.key}:${dueDate}`,
+      };
+    }),
+  ).flat();
+
+  const result = generatePlan(context);
+  const comingUp = result.items.filter((item) => item.section === "coming_up");
+
+  assert.equal(comingUp.length, 3, "Coming up must show at most three future items");
+  // Today's six obligations are not capped — only the preview is.
+  assert.equal(result.items.filter((item) => item.section === "today").length, routines.length);
+  // Nearest first: all three previews come from the earliest future day.
+  for (const item of comingUp) {
+    assert.ok(
+      item.item_key.endsWith(":2026-08-11"),
+      `expected the nearest future day, got ${item.item_key}`,
+    );
+    assert.equal(item.kind, "upcoming_preview");
+  }
+  assert.equal(new Set(result.items.map((item) => item.item_key)).size, result.items.length);
+});
+
 test("an occurrence-only reschedule preserves plan identity while moving placement", () => {
   const context = contextFromFixture({
     scenario: "rescheduled occurrence identity",

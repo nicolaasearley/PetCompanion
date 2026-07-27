@@ -38,6 +38,8 @@ const SECTION_ORDER = {
   coming_up: 3,
   completed: 4,
 } as const;
+/** Engine §13.3 / IA §5: "Coming up — up to three future items". */
+const MAX_UPCOMING_ITEMS = 3;
 const PRIORITY_ORDER: Record<PriorityTier, number> = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
 const WINDOW_ORDER: Record<TimeWindow, number> = {
   morning: 0,
@@ -754,13 +756,37 @@ export function generatePlan(context: GenerationContext): PlanResult {
   const weights = context.score_weights ?? DEFAULT_SCORE_WEIGHTS;
   const suppressed: PlanResult["diagnostics"]["suppressed"] = [];
 
-  const obligations = context.active_occurrences
+  const eligibleOccurrences = context.active_occurrences.filter(
+    (occurrence) =>
+      occurrence.state !== "cancelled" &&
+      occurrence.state !== "expired" &&
+      (occurrence.local_due_date <= context.local_date ||
+        daysBetween(context.local_date, occurrence.local_due_date) <= 7),
+  );
+
+  // Engine §13.3 and IA §5: Coming up shows at most three future items, nearest
+  // first. There is no limit on today's obligations. Without this cap a
+  // household with a few daily routines fills the section with a week of
+  // repeats — six routines became forty-two previewed items — which is exactly
+  // the backlog the plan is meant not to be.
+  const upcomingOccurrences = eligibleOccurrences
+    .filter((occurrence) => occurrence.local_due_date > context.local_date)
+    .sort(
+      (left, right) =>
+        compareText(left.local_due_date, right.local_due_date) ||
+        (left.due_time === undefined ? 1 : 0) - (right.due_time === undefined ? 1 : 0) ||
+        compareText(left.due_time ?? "", right.due_time ?? "") ||
+        WINDOW_ORDER[left.window_ref ?? "anytime"] - WINDOW_ORDER[right.window_ref ?? "anytime"] ||
+        compareText(left.title, right.title) ||
+        compareText(left.occurrence_key, right.occurrence_key),
+    )
+    .slice(0, MAX_UPCOMING_ITEMS);
+  const upcomingKeys = new Set(upcomingOccurrences.map((occurrence) => occurrence.occurrence_key));
+
+  const obligations = eligibleOccurrences
     .filter(
       (occurrence) =>
-        occurrence.state !== "cancelled" &&
-        occurrence.state !== "expired" &&
-        (occurrence.local_due_date <= context.local_date ||
-          daysBetween(context.local_date, occurrence.local_due_date) <= 7),
+        occurrence.local_due_date <= context.local_date || upcomingKeys.has(occurrence.occurrence_key),
     )
     .map((occurrence) => obligationItem(occurrence, context.local_date));
 
@@ -769,7 +795,10 @@ export function generatePlan(context: GenerationContext): PlanResult {
       .filter((occurrence) => occurrence.state !== "cancelled" && occurrence.state !== "expired")
       .map(occurrenceActivityKey),
   );
-  const representedTitles = new Set(obligations.map((item) => normalizeTitle(item.title)));
+  // Derived from every eligible occurrence rather than the rendered items, so
+  // capping Coming up cannot let a recommendation duplicate work that is
+  // already scheduled but no longer previewed.
+  const representedTitles = new Set(eligibleOccurrences.map((occurrence) => normalizeTitle(occurrence.title)));
 
   const eventItems = context.events
     .filter(

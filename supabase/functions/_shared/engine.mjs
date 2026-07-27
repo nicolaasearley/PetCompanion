@@ -17,6 +17,7 @@ var SECTION_ORDER = {
   coming_up: 3,
   completed: 4
 };
+var MAX_UPCOMING_ITEMS = 3;
 var PRIORITY_ORDER = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
 var WINDOW_ORDER = {
   morning: 0,
@@ -527,13 +528,20 @@ function generatePlan(context) {
   const recommendationBudget = budget(context);
   const weights = context.score_weights ?? DEFAULT_SCORE_WEIGHTS;
   const suppressed = [];
-  const obligations = context.active_occurrences.filter(
+  const eligibleOccurrences = context.active_occurrences.filter(
     (occurrence) => occurrence.state !== "cancelled" && occurrence.state !== "expired" && (occurrence.local_due_date <= context.local_date || daysBetween(context.local_date, occurrence.local_due_date) <= 7)
+  );
+  const upcomingOccurrences = eligibleOccurrences.filter((occurrence) => occurrence.local_due_date > context.local_date).sort(
+    (left, right) => compareText(left.local_due_date, right.local_due_date) || (left.due_time === void 0 ? 1 : 0) - (right.due_time === void 0 ? 1 : 0) || compareText(left.due_time ?? "", right.due_time ?? "") || WINDOW_ORDER[left.window_ref ?? "anytime"] - WINDOW_ORDER[right.window_ref ?? "anytime"] || compareText(left.title, right.title) || compareText(left.occurrence_key, right.occurrence_key)
+  ).slice(0, MAX_UPCOMING_ITEMS);
+  const upcomingKeys = new Set(upcomingOccurrences.map((occurrence) => occurrence.occurrence_key));
+  const obligations = eligibleOccurrences.filter(
+    (occurrence) => occurrence.local_due_date <= context.local_date || upcomingKeys.has(occurrence.occurrence_key)
   ).map((occurrence) => obligationItem(occurrence, context.local_date));
   const representedActivityKeys = new Set(
     context.active_occurrences.filter((occurrence) => occurrence.state !== "cancelled" && occurrence.state !== "expired").map(occurrenceActivityKey)
   );
-  const representedTitles = new Set(obligations.map((item) => normalizeTitle(item.title)));
+  const representedTitles = new Set(eligibleOccurrences.map((occurrence) => normalizeTitle(occurrence.title)));
   const eventItems = context.events.filter(
     (event) => event.confirmed && event.local_date >= context.local_date && daysBetween(context.local_date, event.local_date) <= (stage.stage_key === "preparing" ? 14 : 7) && !obligations.some((item) => item.origin === "calendar_event" && normalizeTitle(item.title) === normalizeTitle(event.title))
   ).map((event) => eventItem(context, event));

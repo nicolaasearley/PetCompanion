@@ -7,14 +7,9 @@ struct PlannerView: View {
     @Environment(AppModel.self) private var model
     @State private var store: PlannerStore?
 
-    private let sharedHomeViewModel: HomeViewModel?
     private let injectedService: (any PlannerService)?
 
-    init(
-        viewModel: HomeViewModel? = nil,
-        service: (any PlannerService)? = nil
-    ) {
-        sharedHomeViewModel = viewModel
+    init(service: (any PlannerService)? = nil) {
         injectedService = service
     }
 
@@ -57,10 +52,7 @@ struct PlannerView: View {
             guard store == nil else { return }
             let service = injectedService
                 ?? model.planner
-                ?? PlanServicePlannerAdapter(
-                    model: model,
-                    sharedHomeViewModel: sharedHomeViewModel
-                )
+                ?? PlanServicePlannerAdapter(model: model)
             let created = PlannerStore(service: service)
             store = created
             await created.start()

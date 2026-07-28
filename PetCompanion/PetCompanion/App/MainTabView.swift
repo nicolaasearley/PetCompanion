@@ -4,6 +4,9 @@ import SwiftUI
 /// active tab = filled icon + `primary` tint; badge-free in MVP (doc 09
 /// §7.9). Each destination now has an honest, useful first surface; record
 /// creation remains gated until its owning backend slice exists.
+///
+/// It is also where a tapped reminder lands, once `AppModel` has resolved it
+/// against current state (doc 20 §4.10).
 struct MainTabView: View {
     private enum Destination: Hashable {
         case home
@@ -16,6 +19,7 @@ struct MainTabView: View {
     @Environment(AppModel.self) private var model
     @State private var planViewModel: HomeViewModel?
     @State private var destination: Destination
+    @State private var deepLinkFailure: DeepLinkFailure?
 
     init() {
         #if DEBUG
@@ -36,7 +40,7 @@ struct MainTabView: View {
                         HomeView(viewModel: planViewModel)
                     }
                     Tab("Planner", systemImage: "calendar", value: .planner) {
-                        PlannerView(viewModel: planViewModel)
+                        PlannerView()
                     }
                     Tab("Training", systemImage: "graduationcap", value: .training) {
                         TrainingView()
@@ -58,6 +62,40 @@ struct MainTabView: View {
             if planViewModel == nil {
                 planViewModel = HomeViewModel(model: model)
             }
+            apply(model.pendingDeepLink)
+        }
+        .onChange(of: model.pendingDeepLink) { _, link in
+            apply(link)
+        }
+        .sheet(item: $deepLinkFailure) { failure in
+            DeepLinkUnavailableView(
+                failure: failure,
+                onShowToday: { deepLinkFailure = nil },
+                onCreateHousehold: {
+                    deepLinkFailure = nil
+                    model.signOut()
+                }
+            )
+        }
+    }
+
+    /// The reminder has already been checked against the plan by the time it
+    /// arrives here, so this only places the caregiver — it never decides
+    /// whether the target is still real.
+    private func apply(_ link: ResolvedDeepLink?) {
+        guard let link else { return }
+        model.pendingDeepLink = nil
+        switch link {
+        case .home:
+            destination = .home
+        case .planner:
+            destination = .planner
+        case .planItem(let id):
+            destination = .home
+            planViewModel?.openDetail(itemId: id)
+        case .unavailable(let failure):
+            destination = .home
+            deepLinkFailure = failure
         }
     }
 }

@@ -233,11 +233,34 @@ function latestHistoryDate(context: GenerationContext, predicate: (entry: Histor
   return historyFor(context, predicate)[0]?.local_date ?? null;
 }
 
-function onCooldown(context: GenerationContext, rule: RecommendationRuleRow, contentId: string): boolean {
+/**
+ * How far a rule's cooldown reaches.
+ *
+ * `rule` (the default, and what every rule but one wants) treats the whole
+ * rule as one cadence: `rule.start_next_skill` is "3 days after last start"
+ * whichever skill was started, and `rule.handling_cadence` is "2 days" of
+ * handling regardless of which body part.
+ *
+ * `content` narrows the match to the candidate's own content id. Catalogue §9
+ * specifies `rule.socialization_breadth` as "≥ 2 days PER CATEGORY", and
+ * `socializationCandidates` already applies that per-category recency filter
+ * before proposing anything. Matching `rule_content_id` as well meant a single
+ * shown socialization recommendation put the entire rule on cooldown, so the
+ * chosen next category was suppressed as "cooldown" and breadth could never
+ * rotate.
+ */
+type CooldownScope = "rule" | "content";
+
+function onCooldown(
+  context: GenerationContext,
+  rule: RecommendationRuleRow,
+  contentId: string,
+  scope: CooldownScope = "rule",
+): boolean {
   const latest = latestHistoryDate(
     context,
     (entry) =>
-      (entry.content_id === contentId || entry.rule_content_id === rule.content_id) &&
+      (entry.content_id === contentId || (scope === "rule" && entry.rule_content_id === rule.content_id)) &&
       entry.outcome !== "expired",
   );
   return latest !== null && daysBetween(latest, context.local_date) < rule.cooldown_days;
@@ -349,6 +372,7 @@ function addCandidate(
   values: Record<string, string | number>,
   weights: ScoreWeights,
   scorePatch: Partial<ScoreComponents> = {},
+  cooldownScope: CooldownScope = "rule",
 ): void {
   const candidateKey = `${rule.content_id}:${content.content_id}`;
   if (context.household.excluded_content_ids?.includes(content.content_id)) {
@@ -359,7 +383,7 @@ function addCandidate(
     suppressed.push({ candidate_key: candidateKey, reason: "content_paused" });
     return;
   }
-  if (onCooldown(context, rule, content.content_id)) {
+  if (onCooldown(context, rule, content.content_id, cooldownScope)) {
     suppressed.push({ candidate_key: candidateKey, reason: "cooldown" });
     return;
   }
@@ -535,6 +559,10 @@ function socializationCandidates(
       rule.effort_band,
       { Puppy: context.pet.name, name: context.pet.name, category: row.category.toLowerCase() },
       weights,
+      {},
+      // Catalogue §9: the socialization cooldown is per category, and the
+      // category filter above has already applied it.
+      "content",
     );
   }
 }

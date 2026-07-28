@@ -3,6 +3,7 @@
 // src/generate-plan.ts
 var DAY_MS = 864e5;
 var SUPPORTED_RULES = [
+  "rule.alone_time",
   "rule.brushing",
   "rule.handling_cadence",
   "rule.homecoming_routine",
@@ -408,6 +409,37 @@ function handlingCandidate(context, catalogue, stage, rule, candidates, suppress
     weights
   );
 }
+function aloneTimeCandidate(context, catalogue, stage, rule, candidates, suppressed, weights) {
+  const skill = catalogue.training_skills.find((row) => row.content_id === "skill.alone_time");
+  if (!skill) return;
+  const state = context.training_state.find((entry) => entry.skill_content_id === skill.content_id);
+  if (state?.status === "paused" || state?.status === "completed") return;
+  if (state?.status !== "active") {
+    if (!stage.stage_key) return;
+    const position = stagePosition(stage.stage_key, catalogue.development_stages);
+    if (position < stagePosition(skill.stage_guidance, catalogue.development_stages)) return;
+    if (position > stagePosition("foundations", catalogue.development_stages)) return;
+    const stateBySkill = new Map(context.training_state.map((entry) => [entry.skill_content_id, entry.status]));
+    const prerequisitesMet = skill.prerequisite_skill_refs.every((id) => {
+      const status = stateBySkill.get(id);
+      return status === "active" || status === "completed";
+    });
+    if (!prerequisitesMet) return;
+  }
+  addCandidate(
+    candidates,
+    suppressed,
+    context,
+    rule,
+    skill,
+    `Practice ${skill.title.toLowerCase()}`,
+    "training",
+    skill.effort_band,
+    { Puppy: context.pet.name, name: context.pet.name, skill: skill.title },
+    weights,
+    { user_selected_goal: state?.user_selected_goal ? weights.user_selected_goal : 0 }
+  );
+}
 function brushingCandidate(context, catalogue, stage, rule, candidates, suppressed, weights) {
   if (!stage.stage_key || stagePosition(stage.stage_key, catalogue.development_stages) < stagePosition("settling_in", catalogue.development_stages)) return;
   const content = catalogue.task_definitions.find((row) => row.content_id === "care.brushing");
@@ -557,6 +589,8 @@ function generatePlan(context) {
   if (socialRule) socializationCandidates(context, catalogue, stage, socialRule, candidates, suppressed, weights);
   const handlingRule = rules.get("rule.handling_cadence");
   if (handlingRule) handlingCandidate(context, catalogue, stage, handlingRule, candidates, suppressed, weights);
+  const aloneTimeRule = rules.get("rule.alone_time");
+  if (aloneTimeRule) aloneTimeCandidate(context, catalogue, stage, aloneTimeRule, candidates, suppressed, weights);
   const brushingRule = rules.get("rule.brushing");
   if (brushingRule) brushingCandidate(context, catalogue, stage, brushingRule, candidates, suppressed, weights);
   const deduplicated = [];

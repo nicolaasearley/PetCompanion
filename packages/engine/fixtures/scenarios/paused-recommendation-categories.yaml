@@ -1,0 +1,27 @@
+{
+  "scenario": "paused recommendation categories suppress their catalogue content",
+  "local_date": "2026-08-06",
+  "capacity": "normal",
+  "household": {
+    "paused_content_ids": [
+      "care.brushing",
+      "soc.environments.front_garden",
+      "soc.people.calm_adult_visitor",
+      "soc.sounds.vacuum_low",
+      "soc.surfaces.grass"
+    ]
+  },
+  "expect": {
+    "absent_content_ids": ["care.brushing", "soc.environments.front_garden"],
+    "recommended_count_max": 3,
+    "explanations": true,
+    "no_duplicates": true,
+    "suppressed": [
+      { "candidate_key": "rule.brushing:care.brushing", "reason": "content_paused" },
+      {
+        "candidate_key": "rule.socialization_breadth:soc.environments.front_garden",
+        "reason": "content_paused"
+      }
+    ]
+  }
+}

@@ -164,19 +164,28 @@ select test_socialization.assert_true(
        where id = '77770000-0000-4000-8000-000000000001')
 );
 
+-- A client that mislabels a catalogue experience must not be able to file it
+-- under the wrong category: breadth reporting is only honest if the catalogue
+-- owns the mapping.
+select test_socialization.put(
+  'record_mislabelled',
+  public.write_path_record_socialization(
+    '44440000-0000-4000-8000-000000000001', 'soc-record-mislabel', 'hash-mislabel',
+    '{}'::jsonb, now(), null,
+    jsonb_build_object(
+      'pet_id', '66660000-0000-4000-8000-000000000001',
+      'experience_content_id', 'soc.sounds.doorbell',
+      'category', 'Transportation',
+      'response', 'relaxed'
+    )
+  )::text
+);
+
 select test_socialization.assert_true(
   'the category comes from the catalogue, never from the client',
-  (select category = 'Sounds' from public.socialization_records
-   where id = (public.write_path_record_socialization(
-     '44440000-0000-4000-8000-000000000001', 'soc-record-mislabel', 'hash-mislabel',
-     '{}'::jsonb, now(), null,
-     jsonb_build_object(
-       'pet_id', '66660000-0000-4000-8000-000000000001',
-       'experience_content_id', 'soc.sounds.doorbell',
-       'category', 'Transportation',
-       'response', 'relaxed'
-     )
-   ) -> 'record' ->> 'id')::uuid)
+  (test_socialization.val('record_mislabelled')::jsonb -> 'record' ->> 'category') = 'Sounds'
+  and (select category = 'Sounds' from public.socialization_records
+       where id = (test_socialization.val('record_mislabelled')::jsonb -> 'record' ->> 'id')::uuid)
 );
 
 select test_socialization.assert_true(
@@ -190,22 +199,27 @@ select test_socialization.assert_true(
      and action = 'socialization.recorded')
 );
 
+select test_socialization.put(
+  'record_custom',
+  public.write_path_record_socialization(
+    '44440000-0000-4000-8000-000000000002', 'soc-record-custom', 'hash-custom',
+    '{}'::jsonb, now(), null,
+    jsonb_build_object(
+      'pet_id', '66660000-0000-4000-8000-000000000001',
+      'custom_label', 'Neighbour''s wheelie bin',
+      'category', 'Household objects',
+      'response', 'hesitant'
+    )
+  )::text
+);
+
 select test_socialization.assert_true(
   'a custom experience is recorded against a category with no catalogue reference',
   (select custom_label = 'Neighbour''s wheelie bin'
         and category = 'Household objects'
         and experience_content_id is null
    from public.socialization_records
-   where id = (public.write_path_record_socialization(
-     '44440000-0000-4000-8000-000000000002', 'soc-record-custom', 'hash-custom',
-     '{}'::jsonb, now(), null,
-     jsonb_build_object(
-       'pet_id', '66660000-0000-4000-8000-000000000001',
-       'custom_label', 'Neighbour''s wheelie bin',
-       'category', 'Household objects',
-       'response', 'hesitant'
-     )
-   ) -> 'record' ->> 'id')::uuid)
+   where id = (test_socialization.val('record_custom')::jsonb -> 'record' ->> 'id')::uuid)
 );
 
 -- ---------------------------------------------------------------------------
@@ -313,6 +327,8 @@ select test_socialization.expect_sqlstate(
   '23503'
 );
 
+-- The guard trigger fires ahead of the foreign key, so the failure surfaces as
+-- the explicit "not published content" validation rather than a raw 23503.
 select test_socialization.expect_sqlstate(
   'DM §18.11: a record cannot reference unpublished catalogue content',
   $s$insert into public.socialization_records (
@@ -323,7 +339,7 @@ select test_socialization.expect_sqlstate(
     'soc.surfaces.grass', 99, 'Surfaces', current_date, 'relaxed',
     '44440000-0000-4000-8000-000000000001', '44440000-0000-4000-8000-000000000001'
   )$s$,
-  '23503'
+  '22023'
 );
 
 select test_socialization.expect_sqlstate(

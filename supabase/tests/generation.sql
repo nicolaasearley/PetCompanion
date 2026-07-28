@@ -443,6 +443,190 @@ select test_generation.expect_sqlstate(
   '55000'
 );
 
+-- Enriched generation context: inputs that used to be hardcoded empty.
+insert into public.content_versions (
+  content_id, version, content_type, publication_status, review_status,
+  source_category, author, authored_on, effective_from
+)
+values
+  ('soc.test.people_greeting', 1, 'socialization_experience', 'published',
+   'pending_professional_review', 'test', 'test suite', '2024-01-01', '2024-01-01'),
+  ('care.test_brushing', 1, 'task_definition', 'published',
+   'pending_professional_review', 'test', 'test suite', '2024-01-01', '2024-01-01')
+on conflict (content_id, version) do nothing;
+
+insert into public.socialization_catalog (
+  content_id, version, category, experience_key, label, caution_text,
+  response_vocabulary, review_status, effective_from
+)
+values (
+  'soc.test.people_greeting', 1, 'People', 'people_greeting', 'Calm greeting',
+  'Ask your veterinarian.', array['relaxed'], 'pending_professional_review', '2024-01-01'
+)
+on conflict (content_id, version) do nothing;
+
+insert into public.task_definitions (
+  provenance, content_id, content_version, title, category,
+  default_obligation_class, default_effort, default_time_policy
+)
+values (
+  'system', 'care.test_brushing', 1, 'Test brushing', 'grooming',
+  'recommended', 'tiny', 'anytime'
+)
+on conflict do nothing;
+
+-- A recommendation the household accepted: user-provenance definition whose
+-- only link back to the catalogue is metadata.content_ref.
+insert into public.task_definitions (
+  id, provenance, household_id, title, category, default_obligation_class,
+  default_effort, default_time_policy, metadata, created_by, updated_by
+)
+values (
+  'b5000000-0000-4000-8000-000000000005', 'user', 'b2000000-0000-4000-8000-000000000001',
+  'Calm greeting', 'socialization', 'scheduled', 'short', 'anytime',
+  '{"content_ref":{"content_id":"soc.test.people_greeting","version":1}}',
+  'b1000000-0000-4000-8000-000000000001', 'b1000000-0000-4000-8000-000000000001'
+);
+
+insert into public.task_schedules (
+  id, household_id, pet_id, task_definition_id, recurrence, assignment_kind,
+  origin, obligation_class, active_range_start_date, active_range_until,
+  created_by, updated_by
+)
+values (
+  'b6000000-0000-4000-8000-000000000005', 'b2000000-0000-4000-8000-000000000001',
+  'b4000000-0000-4000-8000-000000000001', 'b5000000-0000-4000-8000-000000000005',
+  '{"type":"once","anchor_date":"2024-02-27","time_policy":"anytime"}',
+  'anyone', 'socialization_rule', 'scheduled', '2024-02-27', '2024-02-27',
+  'b1000000-0000-4000-8000-000000000001', 'b1000000-0000-4000-8000-000000000001'
+);
+
+insert into public.task_occurrences (
+  id, occurrence_key, household_id, pet_id, schedule_id, local_due_date,
+  original_local_due_date, time_policy, assignment_kind, state,
+  obligation_class, origin, created_by, updated_by
+)
+values (
+  'b7000000-0000-4000-8000-000000000005', 'b6000000-0000-4000-8000-000000000005:2024-02-27',
+  'b2000000-0000-4000-8000-000000000001', 'b4000000-0000-4000-8000-000000000001',
+  'b6000000-0000-4000-8000-000000000005', '2024-02-27', '2024-02-27', 'anytime',
+  'anyone', 'pending', 'scheduled', 'socialization_rule',
+  'b1000000-0000-4000-8000-000000000001', 'b1000000-0000-4000-8000-000000000001'
+);
+
+insert into public.dispositions (
+  household_id, occurrence_id, action, actor_user_id, recorded_at, effective_at,
+  skip_reason, client_idempotency_key
+)
+values (
+  'b2000000-0000-4000-8000-000000000001', 'b7000000-0000-4000-8000-000000000005',
+  'skip', 'b1000000-0000-4000-8000-000000000001',
+  '2024-02-27 18:00:00+00', '2024-02-27 18:00:00+00',
+  'do_not_suggest_for_now', 'generation-dismiss-1'
+);
+
+insert into public.plan_items (
+  plan_id, item_key, kind, content_ref, title, category, obligation_class,
+  priority_tier, section, time_window, effort_band, display_state, origin
+)
+select
+  p.id, 'informational:soc.test.people_greeting', 'informational',
+  '{"content_id":"soc.test.people_greeting","version":1}', 'Calm greeting',
+  'socialization', 'informational', 'P5', 'coming_up', 'anytime', 'short',
+  'completed', 'socialization_rule'
+from public.plans p
+where p.pet_id = 'b4000000-0000-4000-8000-000000000001' and p.local_date = '2024-02-29';
+
+update public.pet_preferences
+set paused_recommendation_categories = '{grooming}'
+where pet_id = 'b4000000-0000-4000-8000-000000000001';
+
+select test_generation.assert_true(
+  'paused recommendation categories resolve to the published content they cover',
+  (public.write_path_generation_context(
+    'b1000000-0000-4000-8000-000000000001',
+    'b4000000-0000-4000-8000-000000000001',
+    null,
+    '2024-02-29 13:00:00+00'
+  ) #> '{household,paused_content_ids}') ? 'care.test_brushing'
+  and not ((public.write_path_generation_context(
+    'b1000000-0000-4000-8000-000000000001',
+    'b4000000-0000-4000-8000-000000000001',
+    null,
+    '2024-02-29 13:00:00+00'
+  ) #> '{household,paused_content_ids}') ? 'soc.test.people_greeting')
+);
+
+update public.pet_preferences
+set paused_recommendation_categories = '{socialization}'
+where pet_id = 'b4000000-0000-4000-8000-000000000001';
+
+select test_generation.assert_true(
+  'pausing socialization pauses the socialization catalogue rather than nothing',
+  (public.write_path_generation_context(
+    'b1000000-0000-4000-8000-000000000001',
+    'b4000000-0000-4000-8000-000000000001',
+    null,
+    '2024-02-29 13:00:00+00'
+  ) #> '{household,paused_content_ids}') ? 'soc.test.people_greeting'
+);
+
+select test_generation.assert_true(
+  'recent history carries the socialization category the breadth rule filters on',
+  exists (
+    select 1
+    from jsonb_array_elements(
+      public.write_path_generation_context(
+        'b1000000-0000-4000-8000-000000000001',
+        'b4000000-0000-4000-8000-000000000001',
+        null,
+        '2024-02-29 13:00:00+00'
+      ) -> 'recent_history'
+    ) entry
+    where entry->>'content_id' = 'soc.test.people_greeting'
+      and entry->>'socialization_category' = 'People'
+      and entry->>'local_date' = '2024-02-29'
+  )
+);
+
+select test_generation.assert_true(
+  'an accepted recommendation keeps its catalogue identity and a do-not-suggest skip reads as a dismissal',
+  exists (
+    select 1
+    from jsonb_array_elements(
+      public.write_path_generation_context(
+        'b1000000-0000-4000-8000-000000000001',
+        'b4000000-0000-4000-8000-000000000001',
+        null,
+        '2024-02-29 13:00:00+00'
+      ) -> 'recent_history'
+    ) entry
+    where entry->>'content_id' = 'soc.test.people_greeting'
+      and entry->>'socialization_category' = 'People'
+      and entry->>'local_date' = '2024-02-27'
+      and entry->>'outcome' = 'dismissed'
+  )
+);
+
+-- Inputs whose entities do not exist in this slice stay empty rather than
+-- being simulated (engine §7.8, Data Model §11.5, §12.2, §12.4).
+select test_generation.assert_true(
+  'unbuilt entities leave their generation inputs empty',
+  (with context as (
+    select public.write_path_generation_context(
+      'b1000000-0000-4000-8000-000000000001',
+      'b4000000-0000-4000-8000-000000000001',
+      null,
+      '2024-02-29 13:00:00+00'
+    ) as value
+  )
+  select value->'events' = '[]'::jsonb
+    and value->'training_state' = '[]'::jsonb
+    and value #> '{household,excluded_content_ids}' = '[]'::jsonb
+    and value #> '{household,excluded_socialization_categories}' = '[]'::jsonb
+  from context)
+);
+
 do $$
 declare
   failed_count integer;

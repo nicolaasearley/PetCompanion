@@ -184,3 +184,24 @@ struct TaskOccurrence: Codable, Identifiable, Equatable, Sendable {
         try container.encodeIfPresent(assignment.userId, forKey: .assignmentUserId)
     }
 }
+
+extension TaskOccurrence {
+    /// Midnight of this occurrence's due date, in the household's own zone.
+    ///
+    /// `task_occurrences.local_due_date` is a SQL `date` — a civil date with no
+    /// zone — and `SupabaseCoding.restDecoder` lands it on midnight GMT, so its
+    /// calendar components only read correctly in GMT. Anything that combines
+    /// it with a household-local wall-clock time has to re-anchor it first:
+    /// midnight GMT on the 28th is the evening of the 27th in Toronto, so
+    /// setting an hour "of" that instant lands on the wrong day entirely. This
+    /// is the occurrence-side twin of `Plan.localDayStart(in:)`.
+    func localDayStart(in timeZone: TimeZone) -> Date {
+        var gmt = Calendar(identifier: .gregorian)
+        gmt.timeZone = .gmt
+        let day = gmt.dateComponents([.year, .month, .day], from: localDueDate)
+
+        var household = Calendar(identifier: .gregorian)
+        household.timeZone = timeZone
+        return household.date(from: day) ?? localDueDate
+    }
+}

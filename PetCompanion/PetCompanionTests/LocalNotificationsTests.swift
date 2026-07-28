@@ -63,6 +63,15 @@ final class LocalNotificationsTests: XCTestCase {
             -600,
             accuracy: 1
         )
+        // Name the failure directly: the reminder must fall on the occurrence's
+        // own household-local day, not the one before it.
+        var toronto = Calendar(identifier: .gregorian)
+        toronto.timeZone = TimeZone(identifier: "America/Toronto")!
+        XCTAssertEqual(
+            toronto.dateComponents([.year, .month, .day], from: candidate.fireDate),
+            DateComponents(year: 2026, month: 7, day: 27),
+            "a household west of GMT must not have its reminder scheduled a day early"
+        )
     }
 
     func testCandidateBuilderSuppressesQuietQueuedAndCompletedItems() {
@@ -161,8 +170,15 @@ final class LocalNotificationsTests: XCTestCase {
     ) -> (snapshot: PlanSnapshot, now: Date, dueDate: Date, itemId: UUID) {
         var householdCalendar = Calendar(identifier: .gregorian)
         householdCalendar.timeZone = TimeZone(identifier: "America/Toronto")!
-        let localDate = householdCalendar.date(
-            from: DateComponents(year: 2026, month: 7, day: 27, hour: 12)
+        // A SQL `date` decodes onto midnight GMT, not a household-local
+        // instant. Building this the convenient way — Toronto noon — hid a
+        // real off-by-a-day: west of GMT, setting a wall time "of" the decoded
+        // value lands on the previous day, and for today's plan that puts the
+        // reminder in the past where it is silently dropped.
+        var gmtCalendar = Calendar(identifier: .gregorian)
+        gmtCalendar.timeZone = .gmt
+        let localDate = gmtCalendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 27)
         )!
         let now = householdCalendar.date(
             from: DateComponents(year: 2026, month: 7, day: 27, hour: 10)

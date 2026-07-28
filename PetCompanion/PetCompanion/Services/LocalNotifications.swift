@@ -113,6 +113,12 @@ enum LocalNotificationCandidateBuilder {
                   occurrence.state == .pending
             else { return nil }
 
+            // `local_due_date` decodes onto midnight GMT, so setting an hour
+            // "of" it lands on the previous day for any household west of
+            // GMT — and for today's plan that puts the reminder in the past,
+            // where the fireDate filter below silently drops it. Re-anchor to
+            // the household's own midnight before combining with a wall time.
+            let dueDayStart = occurrence.localDayStart(in: timeZone)
             let dueDate: Date?
             switch occurrence.timePolicy {
             case .exactTime:
@@ -127,7 +133,7 @@ enum LocalNotificationCandidateBuilder {
                     bySettingHour: hour,
                     minute: minute,
                     second: 0,
-                    of: occurrence.localDueDate
+                    of: dueDayStart
                 )
             case .window:
                 guard preferences.includeWindowReminders,
@@ -137,7 +143,7 @@ enum LocalNotificationCandidateBuilder {
                     bySettingHour: window.notificationHour,
                     minute: 0,
                     second: 0,
-                    of: occurrence.localDueDate
+                    of: dueDayStart
                 )
             case .anytime:
                 return nil

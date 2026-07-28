@@ -397,9 +397,17 @@ select test_invitations.expect_sqlstate(
   'PC011'
 );
 
+-- Deliberately its own statement: the sweep must run before the assertion
+-- reads the row, and Postgres does not promise to evaluate the operands of
+-- `and` in written order.
+select test_invitations.put(
+  'swept_count',
+  public.expire_stale_household_invitations('22220000-0000-4000-8000-000000000001')::text
+);
+
 select test_invitations.assert_true(
   'a lapsed invitation is swept to expired the next time the household is written',
-  (select public.expire_stale_household_invitations('22220000-0000-4000-8000-000000000001') = 1)
+  test_invitations.val('swept_count') = '1'
   and (select status = 'expired' and resolved_at is not null
        from public.household_invitations where id = '33330000-0000-4000-8000-000000000003')
 );

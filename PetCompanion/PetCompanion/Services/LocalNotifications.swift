@@ -165,7 +165,12 @@ enum LocalNotificationCandidateBuilder {
                 deepLink: .planItem(
                     item.id,
                     petId: snapshot.plan.petId,
-                    date: snapshot.plan.localDate
+                    // Re-anchored, not passed through: the tap resolves
+                    // against `PlanService.plan(forPet:on:)`, whose date is
+                    // defined in the household's zone, while `localDate`
+                    // decodes at GMT. Handing the raw value over would ask a
+                    // Toronto household for the previous day's plan.
+                    date: snapshot.plan.localDayStart(in: timeZone)
                 )
             )
         }

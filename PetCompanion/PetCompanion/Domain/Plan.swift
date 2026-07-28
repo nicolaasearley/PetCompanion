@@ -83,6 +83,34 @@ struct Plan: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+extension Plan {
+    /// An instant inside this plan's local day, expressed in `timeZone`.
+    ///
+    /// `plans.local_date` is a SQL `date` — a civil date with no zone — and
+    /// `SupabaseCoding.restDecoder` lands it on midnight GMT, so its calendar
+    /// components only read correctly in GMT. Every `PlanService` date
+    /// argument is instead defined in the household's own zone, so anything
+    /// handing `localDate` back across that boundary has to re-anchor it.
+    /// Without this a household west of GMT loses a day: midnight GMT on the
+    /// 28th is the evening of the 27th in Toronto. It is the plan-side twin
+    /// of `RealPlannerService.localDate(_:calendar:)`.
+    func localDayStart(in timeZone: TimeZone) -> Date {
+        var gmt = Calendar(identifier: .gregorian)
+        gmt.timeZone = .gmt
+        let day = gmt.dateComponents([.year, .month, .day], from: localDate)
+
+        var household = Calendar(identifier: .gregorian)
+        household.timeZone = timeZone
+        return household.date(from: day) ?? localDate
+    }
+
+    /// The household zone this plan was generated in, or GMT when the stored
+    /// identifier is not one this device knows.
+    var snapshotTimeZone: TimeZone {
+        TimeZone(identifier: timeZoneSnapshot) ?? .gmt
+    }
+}
+
 /// Ordering hint, internal only, never displayed as a score — engine §12.1.
 /// Raw values match the SQL enum `public.priority_tier` ('P0'..'P5'); lower
 /// tiers sort first.

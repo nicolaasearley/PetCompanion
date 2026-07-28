@@ -150,7 +150,8 @@ final class AppModel {
         plans = RealPlanService(
             client: client,
             operationQueue: operationQueue,
-            notifications: notifications
+            notifications: notifications,
+            householdTimeZone: { [weak self] in self?.household?.clock.timeZone }
         )
         planner = RealPlannerService(
             client: client,
@@ -320,11 +321,8 @@ final class AppModel {
                 on: target.localDate ?? Date(),
                 resectioningCompleted: false
             )
-        } catch PlanServiceError.notSignedIn {
-            pendingDeepLink = .unavailable(.noAccess)
-            return
         } catch {
-            pendingDeepLink = .unavailable(.planUnavailable)
+            pendingDeepLink = .unavailable(NotificationDeepLinkResolver.failure(for: error))
             return
         }
 

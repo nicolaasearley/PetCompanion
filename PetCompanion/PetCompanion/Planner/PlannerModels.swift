@@ -319,10 +319,36 @@ struct PlannerAgendaItem: Identifiable, Equatable, Sendable {
 }
 
 struct PlannerDayAgenda: Equatable, Sendable {
+    /// How much this agenda is able to say about its day.
+    ///
+    /// "Nothing is scheduled" and "nobody knows what was scheduled" are
+    /// different facts and must not share a rendering (IA §15.1). A day with
+    /// no plan is the second: reading it produced no items because there was
+    /// nothing to read, not because the day was quiet.
+    enum Coverage: Equatable, Sendable {
+        /// The day was read. Whatever it holds is what it holds — including
+        /// nothing, which is then a real empty day (IA §15.2).
+        case planned
+        /// No plan exists for this day. Days are planned when their local
+        /// day begins (engine §10.1), so a future date has not been reached
+        /// yet and a past one predates this pet's plans.
+        case notGenerated
+    }
+
     var date: Date
     var items: [PlannerAgendaItem]
     var lastVerifiedAt: Date?
     var isStale: Bool
+    var coverage: Coverage = .planned
+
+    /// Calm, specific copy for a day the app cannot describe — never an
+    /// error state, because nothing failed (doc 09 §10).
+    func unplannedDayMessage(today: Date, calendar: Calendar) -> String? {
+        guard coverage == .notGenerated else { return nil }
+        return calendar.startOfDay(for: date) > calendar.startOfDay(for: today)
+            ? "This day hasn't been planned yet. Its plan is prepared when the day begins."
+            : "No plan was kept for this day, so PetCompanion can't say what was scheduled."
+    }
 }
 
 struct PlannerHistoryEntry: Identifiable, Equatable, Sendable {

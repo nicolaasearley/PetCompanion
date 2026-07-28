@@ -33,16 +33,24 @@ final class RealPlanService: PlanService {
     /// a full regenerate after every action.
     private var cachedSnapshot: PlanSnapshot?
 
+    /// The household's authoritative zone, supplied by `AppModel` because
+    /// this service is built before the household is loaded. Everything
+    /// day-scoped here — which civil date a request means, which
+    /// `plans.local_date` to filter on — is only correct in that zone.
+    private let householdTimeZone: @MainActor () -> TimeZone?
+
     init(
         client: SupabaseClient,
         operationQueue: OfflineOperationQueue,
         notifications: any LocalNotificationServicing,
-        cache: PlanSnapshotCache? = nil
+        cache: PlanSnapshotCache? = nil,
+        householdTimeZone: @escaping @MainActor () -> TimeZone? = { nil }
     ) {
         self.client = client
         self.operationQueue = operationQueue
         self.notifications = notifications
         self.cache = cache ?? PlanSnapshotCache()
+        self.householdTimeZone = householdTimeZone
     }
 
     // MARK: - PlanService
@@ -56,6 +64,10 @@ final class RealPlanService: PlanService {
             _ = try await client.auth.session
         } catch {
             throw PlanServiceError.notSignedIn
+        }
+
+        guard Self.isSameLocalDay(date, Date(), timeZone: resolvedTimeZone()) else {
+            return try await readElapsedDay(petId: petId, date: date)
         }
 
         do {
@@ -74,6 +86,28 @@ final class RealPlanService: PlanService {
             cachedSnapshot = fallback
             return fallback
         }
+    }
+
+    /// Any local day other than the household's current one. It is read,
+    /// never generated, and it stays outside every piece of live-day state:
+    ///
+    /// - `generate-plan` only ever materializes the *current* local day
+    ///   (engine §10.1), so regenerating here would quietly rewrite today
+    ///   while the caregiver was looking at another date.
+    /// - `cachedSnapshot`, the last-known-good cache, and reminder
+    ///   reconciliation all describe today. A day-before read must not
+    ///   redefine which occurrences `completeItem` resolves against, which
+    ///   plan an outage falls back to, or which reminders are scheduled.
+    /// - The cache fallback is likewise skipped: serving today's cached plan
+    ///   for a request about the 12th is exactly the substitution this whole
+    ///   path exists to stop.
+    private func readElapsedDay(petId: UUID, date: Date) async throws -> PlanSnapshot {
+        guard let plan = try await readPersistedPlan(petId: petId, date: date) else {
+            // A past day the engine never planned and a future day it has not
+            // planned yet are both unknowable, not empty (IA §15.1).
+            throw PlanServiceError.noPlanForDay
+        }
+        return plan
     }
 
     func completeItem(itemId: UUID, petId: UUID, on date: Date) async throws -> PlanSnapshot {
@@ -363,25 +397,30 @@ final class RealPlanService: PlanService {
     // MARK: - Direct reads (RLS "active member read" policies)
 
     private func readPersistedPlan(petId: UUID, date: Date) async throws -> PlanSnapshot? {
-        // Deliberately does NOT filter by an exact `local_date` string built
-        // from the device's calendar/time zone: `plans.local_date` is
-        // computed server-side from the *household's* `time_zone_snapshot`
+        // The filter is an exact `local_date` match, built in the household's
+        // zone rather than the device's. `plans.local_date` is computed
+        // server-side from `time_zone_snapshot`
         // (`household_current_local_date`, `write_path_generation_context`),
         // which routinely disagrees with the simulator/device's local date
         // (caught in manual verification: a household on `Europe/Stockholm`
-        // had `local_date` one calendar day ahead of the host machine). An
-        // exact-match filter against a device-local string would silently
-        // miss the row and fall through to a full regenerate on every plain
-        // fetch — never actually reading, always resectioning. Slice A has
-        // no day-close cron (`close_plans_for_date` isn't scheduled yet), so
-        // there is at most one meaningfully "current" plan per pet: the
-        // latest `open` one.
+        // had `local_date` one calendar day ahead of the host machine). Using
+        // a device-local string here would miss the row and fall through to a
+        // regenerate on every plain fetch — which is why this once read "the
+        // latest open plan" instead. That shortcut stopped being survivable
+        // once `close_elapsed_plans` began closing previous days on a
+        // schedule and Planner could navigate to them: the newest open plan
+        // is only ever *today*, so every other date silently answered with
+        // today's work.
+        //
+        // Status is intentionally not filtered. An elapsed day's plan is
+        // `closed`, and that is precisely the row a historical read wants;
+        // the date already identifies exactly one plan (unique per pet+day,
+        // doc 10 §10.1).
         let planResponse = try await client
             .from("plans")
             .select()
             .eq("pet_id", value: petId)
-            .eq("status", value: Plan.Status.open.rawValue)
-            .order("local_date", ascending: false)
+            .eq("local_date", value: SupabaseCoding.dateOnlyString(date, timeZone: resolvedTimeZone()))
             .order("generated_at", ascending: false)
             .limit(1)
             .execute()
@@ -431,6 +470,29 @@ final class RealPlanService: PlanService {
         let dispositions = try decoder.decode([Disposition].self, from: dispositionsResponse.data)
 
         return PlanSnapshot(plan: plan, items: items, occurrences: occurrences, dispositions: dispositions)
+    }
+
+    // MARK: - Local days
+
+    /// Whether two instants fall on the same civil day in `timeZone`.
+    ///
+    /// The comparison is done on the rendered `YYYY-MM-DD` rather than with
+    /// `Calendar.isDate(_:inSameDayAs:)` so it is exactly the string the
+    /// `plans.local_date` filter uses — one definition of "which day", not
+    /// two that can disagree at the boundary.
+    static func isSameLocalDay(_ lhs: Date, _ rhs: Date, timeZone: TimeZone) -> Bool {
+        SupabaseCoding.dateOnlyString(lhs, timeZone: timeZone)
+            == SupabaseCoding.dateOnlyString(rhs, timeZone: timeZone)
+    }
+
+    /// The household zone, or the best evidence of it available. The
+    /// provider is authoritative; the last plan's own `time_zone_snapshot`
+    /// covers a read that beats `AppModel.household` into place. The device
+    /// zone is a last resort, and only ever wrong for an explicitly dated
+    /// request — Home asks for `Date()`, which is the current local day in
+    /// every zone.
+    private func resolvedTimeZone() -> TimeZone {
+        householdTimeZone() ?? cachedSnapshot?.plan.snapshotTimeZone ?? .current
     }
 
     // MARK: - Local reconciliation helpers

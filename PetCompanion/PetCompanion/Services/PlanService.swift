@@ -5,10 +5,17 @@ import Foundation
 @MainActor
 protocol PlanService: AnyObject {
     /// The plan for one pet on one local day.
+    ///
+    /// `date` is any instant inside the wanted day *in the household's time
+    /// zone* — that is the only zone `plans.local_date` is defined in. A day
+    /// with no plan throws `noPlanForDay`; it never resolves to a different
+    /// day's plan.
     /// - Parameter resectioningCompleted: when true, items completed since
     ///   generation move to the Completed section — the "next natural list
     ///   update" from doc 09 §8; a plain fetch never re-sections, so a
     ///   just-completed card stays inline (no plan-jumping, engine §4.3).
+    ///   It applies to the current local day only: earlier days are read as
+    ///   they were left, never regenerated (engine §10.4).
     func plan(
         forPet petId: UUID,
         on date: Date,
@@ -48,6 +55,11 @@ enum PlanServiceError: LocalizedError {
     /// A recommendation item was sent to completion before the separate
     /// accept/promote command created its occurrence.
     case recommendationNotYetActionable
+    /// The requested local day has no plan at all. Deliberately distinct
+    /// from `planNotFound` (a read that failed) and from an empty plan (a
+    /// day that *was* planned and held nothing): a day the engine never
+    /// generated cannot honestly be described as either.
+    case noPlanForDay
 
     var errorDescription: String? {
         switch self {
@@ -55,6 +67,7 @@ enum PlanServiceError: LocalizedError {
         case .planNotFound: "That plan couldn't be loaded. Pull to refresh."
         case .itemNotFound: "That item couldn't be found. Pull to refresh."
         case .recommendationNotYetActionable: "Add this recommendation to today before completing it."
+        case .noPlanForDay: "There is no plan for that day."
         }
     }
 }

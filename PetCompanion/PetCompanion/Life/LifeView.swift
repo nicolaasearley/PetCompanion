@@ -26,6 +26,7 @@ struct LifeView: View {
                 }
             }
             .navigationTitle("Life")
+            .profileEntry()
         }
     }
 }

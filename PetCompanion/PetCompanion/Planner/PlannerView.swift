@@ -24,6 +24,7 @@ struct PlannerView: View {
                 }
             }
             .navigationTitle("Planner")
+            .profileEntry()
             .toolbar {
                 if let store {
                     ToolbarItem(placement: .topBarLeading) {
@@ -250,7 +251,12 @@ private struct PlannerContentView: View {
                     }
                 }
 
-                if agenda.items.isEmpty {
+                if let unplanned = agenda.unplannedDayMessage(
+                    today: .now,
+                    calendar: store.calendar
+                ) {
+                    unplannedDay(unplanned)
+                } else if agenda.items.isEmpty {
                     emptyDay
                 } else {
                     LazyVStack(spacing: PCSpacing.betweenCards) {
@@ -284,8 +290,22 @@ private struct PlannerContentView: View {
     }
 
     private var emptyDay: some View {
+        dayCard(
+            message: "Nothing is scheduled for this day.",
+            systemImage: "calendar.badge.checkmark"
+        )
+    }
+
+    /// A day with no plan at all. Deliberately not the empty-day card: that
+    /// one asserts the day is clear, and this one cannot (IA §15.1). Quick
+    /// add is still offered — the day is unknown, not closed.
+    private func unplannedDay(_ message: String) -> some View {
+        dayCard(message: message, systemImage: "calendar.badge.questionmark")
+    }
+
+    private func dayCard(message: String, systemImage: String) -> some View {
         VStack(alignment: .leading, spacing: PCSpacing.lg) {
-            Label("Nothing is scheduled for this day.", systemImage: "calendar.badge.checkmark")
+            Label(message, systemImage: systemImage)
                 .font(Font.pc.body)
                 .foregroundStyle(Color.pc.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)

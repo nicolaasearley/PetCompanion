@@ -89,6 +89,43 @@ struct OfflineOperation: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+extension OfflineOperation {
+    /// What the caregiver was trying to do, in their words.
+    ///
+    /// A change cannot be reviewed — or knowingly thrown away — until it is
+    /// recognisable, and `complete_occurrence` is not a description of
+    /// anything anyone did (doc 09 §9). The payload deliberately does not
+    /// contribute: it carries ids, not titles, and the rows those ids point
+    /// at may no longer exist, which is often exactly why the command was
+    /// refused. Naming the act is honest; guessing at its subject is not.
+    var displayTitle: String {
+        switch command {
+        case "complete_occurrence": "Mark a task complete"
+        case "undo_completion": "Undo a completion"
+        case "skip_item": "Skip a task"
+        case "undo_skip": "Undo a skip"
+        case "snooze_occurrence": "Snooze a reminder"
+        case "reschedule_occurrence": "Move a task to another day"
+        case "cancel_occurrence": "Cancel a task"
+        case "edit_occurrence": "Edit a task"
+        case "create_task": "Add a task"
+        case "create_recurring_task": "Add a repeating task"
+        case "edit_schedule_future": "Edit a repeating task"
+        case "archive_schedule": "Cancel a repeating task"
+        case "accept_recommendation": "Add a suggestion to the plan"
+        case "set_default_capacity": "Change the household's default capacity"
+        case "set_routine_preferences": "Change the household's routine windows"
+        case "create_household": "Create the household"
+        case "create_pet": "Add a pet"
+        case "create_invitation": "Invite a caregiver"
+        case "revoke_invitation": "Revoke an invitation"
+        case "accept_invitation": "Join a household"
+        case "decline_invitation": "Decline an invitation"
+        default: "A change to your household"
+        }
+    }
+}
+
 /// Detailed enough for Home/Planner to report truthfully without inferring
 /// queue health from a single boolean.
 struct MutationSyncStatus: Equatable, Sendable {
@@ -312,6 +349,15 @@ final class OfflineOperationQueue {
         _ = await replaySerially()
     }
 
+    /// Changes the server refused, oldest first. They are never retried, so
+    /// they stay here until the caregiver looks at them and decides.
+    var rejectedOperations: [OfflineOperation] {
+        operations.filter { $0.state == .rejected }
+    }
+
+    /// Forgets a refused change for good. There is nothing to retry and
+    /// nothing to recover: the command never took effect on the server, and
+    /// this removes the only remaining record of the intent.
     func discardRejected(operationId: UUID) {
         operations.removeAll { $0.id == operationId && $0.state == .rejected }
         persist()

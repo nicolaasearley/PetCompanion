@@ -1,0 +1,62 @@
+{
+  "scenario": "the skill's own catalogue frequency sets the gap between practice suggestions",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 6,
+  "catalogue_extra": {
+    "training_skills": [
+      {
+        "content_id": "skill.shake",
+        "version": 1,
+        "skill_group": "Fun skills",
+        "title": "Shake",
+        "prerequisite_skill_refs": [],
+        "stage_guidance": "settling_in",
+        "effort_band": "tiny",
+        "recommended_frequency": "1-2/week",
+        "effective_from": "2026-07-26",
+        "retired_at": null
+      },
+      {
+        "content_id": "skill.crate_comfort",
+        "version": 1,
+        "skill_group": "Calm behavior",
+        "title": "Crate comfort",
+        "prerequisite_skill_refs": [],
+        "stage_guidance": "settling_in",
+        "effort_band": "short",
+        "recommended_frequency": "daily at first",
+        "effective_from": "2026-07-26",
+        "retired_at": null
+      }
+    ]
+  },
+  "training_state": [
+    {
+      "skill_content_id": "skill.shake",
+      "status": "active",
+      "user_selected_goal": true,
+      "started_on": "2026-07-20",
+      "last_practiced_on": "2026-08-05"
+    },
+    {
+      "skill_content_id": "skill.crate_comfort",
+      "status": "active",
+      "user_selected_goal": true,
+      "started_on": "2026-07-20",
+      "last_practiced_on": "2026-08-05"
+    }
+  ],
+  "expect": {
+    "absent_titles": ["Practice shake"],
+    "sections": {
+      "recommended": ["Practice crate comfort"]
+    },
+    "suppressed": [
+      { "candidate_key": "rule.active_skill_practice:skill.shake", "reason": "cooldown" }
+    ],
+    "explanations": true,
+    "explanations_include": ["Crate comfort is an active goal - last practiced 1 days ago."],
+    "no_duplicates": true
+  }
+}

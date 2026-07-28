@@ -91,6 +91,14 @@ export const SEED_CATALOGUE: CatalogueInput = {
       { homecoming: "today_or_tomorrow" },
     ),
     rule(
+      "rule.active_skill_practice",
+      "training",
+      1,
+      "short",
+      "{Skill} is an active goal - last practiced {n} days ago.",
+      { goal_status: "active", not_paused: true },
+    ),
+    rule(
       "rule.start_next_skill",
       "training",
       3,

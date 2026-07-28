@@ -3,6 +3,7 @@
 // src/generate-plan.ts
 var DAY_MS = 864e5;
 var SUPPORTED_RULES = [
+  "rule.active_skill_practice",
   "rule.alone_time",
   "rule.brushing",
   "rule.handling_cadence",
@@ -413,7 +414,7 @@ function aloneTimeCandidate(context, catalogue, stage, rule, candidates, suppres
   const skill = catalogue.training_skills.find((row) => row.content_id === "skill.alone_time");
   if (!skill) return;
   const state = context.training_state.find((entry) => entry.skill_content_id === skill.content_id);
-  if (state?.status === "paused" || state?.status === "completed") return;
+  if (state?.status === "paused" || state?.status === "completed" || state?.status === "retired") return;
   if (state?.status !== "active") {
     if (!stage.stage_key) return;
     const position = stagePosition(stage.stage_key, catalogue.development_stages);
@@ -457,6 +458,74 @@ function brushingCandidate(context, catalogue, stage, rule, candidates, suppress
     { Puppy: context.pet.name, name: context.pet.name },
     weights
   );
+}
+function practiceGapDays(recommendedFrequency) {
+  const text = recommendedFrequency.toLowerCase();
+  if (text.includes("daily")) return 1;
+  const perWeek = [...text.matchAll(/\d+/g)].map((match) => Number(match[0])).filter((value) => value > 0);
+  if (perWeek.length === 0) return 1;
+  return Math.max(1, Math.floor(7 / Math.max(...perWeek)));
+}
+function activeSkillPracticeCandidates(context, catalogue, rule, candidates, suppressed, weights) {
+  const skillById = new Map(catalogue.training_skills.map((skill) => [skill.content_id, skill]));
+  const statusBySkill = new Map(context.training_state.map((state) => [state.skill_content_id, state.status]));
+  const active = context.training_state.filter((state) => state.status === "active").sort((a, b) => compareText(a.skill_content_id, b.skill_content_id));
+  for (const state of active) {
+    const skill = skillById.get(state.skill_content_id);
+    if (!skill) continue;
+    const candidateKey = `${rule.content_id}:${skill.content_id}`;
+    const prerequisitesMet = skill.prerequisite_skill_refs.every((id) => {
+      const status = statusBySkill.get(id);
+      return status === "active" || status === "completed";
+    });
+    if (!prerequisitesMet) {
+      suppressed.push({ candidate_key: candidateKey, reason: "prerequisite_unmet" });
+      continue;
+    }
+    const cadenceRule = {
+      ...rule,
+      cooldown_days: Math.max(rule.cooldown_days, practiceGapDays(skill.recommended_frequency))
+    };
+    const latestHistory = latestHistoryDate(
+      context,
+      (entry) => entry.content_id === skill.content_id && entry.outcome === "completed"
+    );
+    const lastPractised = [state.last_practiced_on, latestHistory].filter((value) => Boolean(value)).sort(compareText).pop();
+    const reference = lastPractised ?? state.started_on;
+    const elapsed = reference === void 0 ? null : daysBetween(reference, context.local_date);
+    if (elapsed === null || lastPractised === void 0 && elapsed < 1) {
+      suppressed.push({ candidate_key: candidateKey, reason: "no_practice_interval_yet" });
+      continue;
+    }
+    if (lastPractised !== void 0 && elapsed < cadenceRule.cooldown_days) {
+      suppressed.push({ candidate_key: candidateKey, reason: "cooldown" });
+      continue;
+    }
+    addCandidate(
+      candidates,
+      suppressed,
+      context,
+      cadenceRule,
+      skill,
+      `Practice ${skill.title.toLowerCase()}`,
+      "training",
+      skill.effort_band,
+      {
+        Puppy: context.pet.name,
+        name: context.pet.name,
+        Skill: skill.title,
+        skill: skill.title,
+        n: Math.max(0, elapsed)
+      },
+      weights,
+      {
+        // §19.2 "Continue a skill that the owner actively selected" — the only
+        // two adaptations the MVP allows for training, and both apply here.
+        user_selected_goal: state.user_selected_goal === false ? 0 : weights.user_selected_goal,
+        continuity_value: weights.continuity_value
+      }
+    );
+  }
 }
 function renderTemplate(template, values) {
   return template.replace(
@@ -585,6 +654,8 @@ function generatePlan(context) {
   if (homecomingRule) homecomingCandidate(context, catalogue, homecomingRule, candidates, suppressed, weights);
   const startRule = rules.get("rule.start_next_skill");
   if (startRule) startSkillCandidates(context, catalogue, stage, startRule, candidates, suppressed, weights);
+  const practiceRule = rules.get("rule.active_skill_practice");
+  if (practiceRule) activeSkillPracticeCandidates(context, catalogue, practiceRule, candidates, suppressed, weights);
   const socialRule = rules.get("rule.socialization_breadth");
   if (socialRule) socializationCandidates(context, catalogue, stage, socialRule, candidates, suppressed, weights);
   const handlingRule = rules.get("rule.handling_cadence");

@@ -1,0 +1,38 @@
+{
+  "scenario": "pausing a goal suppresses its practice suggestions without touching history",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 6,
+  "catalogue_extra": {
+    "training_skills": [
+      {
+        "content_id": "skill.crate_comfort",
+        "version": 1,
+        "skill_group": "Calm behavior",
+        "title": "Crate comfort",
+        "prerequisite_skill_refs": [],
+        "stage_guidance": "settling_in",
+        "effort_band": "short",
+        "recommended_frequency": "daily at first",
+        "effective_from": "2026-07-26",
+        "retired_at": null
+      }
+    ]
+  },
+  "training_state": [
+    {
+      "skill_content_id": "skill.crate_comfort",
+      "status": "paused",
+      "user_selected_goal": true,
+      "started_on": "2026-07-30",
+      "last_practiced_on": "2026-08-03",
+      "progress_state": "practicing"
+    }
+  ],
+  "expect": {
+    "absent_content_ids": ["skill.crate_comfort"],
+    "absent_titles": ["Practice crate comfort", "Start Crate comfort"],
+    "explanations": true,
+    "no_duplicates": true
+  }
+}

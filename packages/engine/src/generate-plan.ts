@@ -743,12 +743,27 @@ function activeSkillPracticeCandidates(
       .sort(compareText)
       .pop();
 
-    // The seeded template says "last practiced {n} days ago". A goal that has
-    // been started but never practised has no such day, so the count falls
-    // back to when the household started it — the only other date the
-    // sentence could honestly be measured from. Sharpening that copy for the
-    // never-practised case is a content question, not an engine one.
-    const reference = lastPractised ?? state.started_on ?? context.local_date;
+    // The seeded template says "last practiced {n} days ago", which presumes a
+    // previous practice, and the catalogue cadence is a GAP between practices.
+    // A goal with no practice yet has neither, so the count is measured from
+    // the day it was started — never-practised understates diligence rather
+    // than inventing it — and a goal started today is left alone entirely
+    // instead of claiming it was practised "0 days ago".
+    const reference = lastPractised ?? state.started_on;
+    const elapsed = reference === undefined ? null : daysBetween(reference, context.local_date);
+    if (elapsed === null || (lastPractised === undefined && elapsed < 1)) {
+      suppressed.push({ candidate_key: candidateKey, reason: "no_practice_interval_yet" });
+      continue;
+    }
+
+    // `addCandidate` applies the cooldown from plan history alone. A session
+    // logged straight into the Training tab never becomes a plan item, so the
+    // cadence is enforced against the practice date itself as well — otherwise
+    // logging a session would suggest practising the same skill again today.
+    if (lastPractised !== undefined && elapsed < cadenceRule.cooldown_days) {
+      suppressed.push({ candidate_key: candidateKey, reason: "cooldown" });
+      continue;
+    }
 
     addCandidate(
       candidates,
@@ -764,7 +779,7 @@ function activeSkillPracticeCandidates(
         name: context.pet.name,
         Skill: skill.title,
         skill: skill.title,
-        n: Math.max(0, daysBetween(reference, context.local_date)),
+        n: Math.max(0, elapsed),
       },
       weights,
       {

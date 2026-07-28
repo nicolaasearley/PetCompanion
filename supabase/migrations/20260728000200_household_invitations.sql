@@ -482,11 +482,13 @@ begin
     raise exception 'you are already a member of this household' using errcode = 'PC013';
   end if;
 
-  -- MVP client constraint, not a data-model rule: every surface in this
-  -- release (household switcher, plan generation, notification routing)
-  -- assumes one active household per account, so joining a second one would
-  -- render untruthfully rather than fail. DM §5.1 permits multiple
-  -- memberships; lift this check together with the household switcher.
+  -- Product rule, not a data-model rule (Decision Log, 2026-07-28). Household
+  -- resolution, plan generation and notification routing all assume a single
+  -- active household and silently take the oldest membership, so accepting a
+  -- second would render untruthfully rather than fail honestly. DM §5.1 permits
+  -- multiple memberships; enforcing this here rather than in the schema means
+  -- lifting it later needs no destructive migration. There is no household
+  -- switcher yet — building one is the trigger to revisit this.
   if exists (
     select 1
     from public.household_memberships hm

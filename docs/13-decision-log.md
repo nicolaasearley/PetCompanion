@@ -273,6 +273,34 @@ architecture, data, privacy, or delivery.
 - **Revisit when:** A non-iOS caregiver joins the household, or public
   release planning begins.
 
+### 2026-07-28 — Limit an account to one active household
+
+- **Status:** Accepted (owner decision, 2026-07-28)
+- **Context:** Household invitations made it possible for the first time for one
+  account to hold active memberships in two households. The data model permits
+  that ([Data Model](10-data-model.md) §5.1), but every client surface in this
+  release — household resolution, plan generation, and notification routing —
+  assumes a single active household and silently takes the oldest membership.
+  Accepting a second invitation would therefore render untruthfully rather than
+  fail honestly.
+- **Decision:** An account may hold at most one active membership across all
+  active households. `write_path_accept_invitation` rejects a second with a
+  distinct error code so the interface can explain the specific limitation
+  instead of showing a generic failure.
+- **Rationale:** Truthfulness over capability. A product whose central promise
+  is unambiguous shared care must not present a household view that quietly
+  omits the caregiver's other household. Enforcing the limit at the write path
+  keeps it a product rule rather than a schema constraint, so lifting it later
+  needs no destructive migration.
+- **Consequences:** A caregiver who genuinely belongs to two households — a
+  sitter, or someone in a separated family — cannot be served until a household
+  switcher exists. The limit lives in one RPC and one error code, so removing it
+  is a small change rather than a redesign.
+- **Revisit when:** A household switcher is planned, or a real caregiver needs
+  membership in a second household — whichever comes first. Professional and
+  sitter roles ([Data Model](10-data-model.md) §5.2 reserved roles) would each
+  force this open.
+
 ## Proposed decisions
 
 *(none currently open)*

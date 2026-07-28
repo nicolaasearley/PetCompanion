@@ -158,6 +158,162 @@ final class PlannerTests: XCTestCase {
         XCTAssertEqual(updated.state, .completed)
     }
 
+    // MARK: - Optimistic queued work
+
+    func testPlaceholderIsReleasedOnceItsOperationLeavesTheQueue() {
+        let fixture = fixture()
+        let operationId = UUID()
+        var work = QueuedPlannerWork()
+        work.addPlaceholder(fixture.item, operationId: operationId)
+
+        // Still waiting: the placeholder is the only row the caregiver has.
+        work.settle(against: [operation(id: operationId, state: .queued)])
+        XCTAssertEqual(
+            work.placeholderItems(on: fixture.item.date, calendar: testCalendar).map(\.id),
+            [fixture.item.id]
+        )
+
+        // Replayed: the operation is gone from the queue and the real
+        // occurrence now arrives from the server, so keeping the placeholder
+        // would show the task twice.
+        work.settle(against: [])
+        XCTAssertTrue(
+            work.placeholderItems(on: fixture.item.date, calendar: testCalendar).isEmpty
+        )
+    }
+
+    func testRejectedCreateDoesNotLeaveAPlaceholderPretendingTheTaskExists() {
+        let fixture = fixture()
+        let operationId = UUID()
+        var work = QueuedPlannerWork()
+        work.addPlaceholder(fixture.item, operationId: operationId)
+
+        work.settle(against: [operation(id: operationId, state: .rejected)])
+
+        XCTAssertTrue(
+            work.placeholderItems(on: fixture.item.date, calendar: testCalendar).isEmpty
+        )
+    }
+
+    func testQueuedBadgeClearsWithTheOperationThatOwedTheConfirmation() {
+        let occurrenceId = UUID()
+        let operationId = UUID()
+        var work = QueuedPlannerWork()
+        work.badge(occurrenceId: occurrenceId, operationId: operationId)
+
+        work.settle(against: [operation(id: operationId, state: .failed)])
+        XCTAssertTrue(work.isBadged(occurrenceId: occurrenceId))
+
+        work.settle(against: [])
+        XCTAssertFalse(work.isBadged(occurrenceId: occurrenceId))
+    }
+
+    // MARK: - Shared plan state
+
+    func testQueuedWorkDoesNotRefreshTheSharedPlanButConfirmedWorkDoes() {
+        let petId = UUID()
+        let today = day(2026, 7, 27)
+
+        XCTAssertFalse(
+            RealPlannerService.sharedPlanNeedsRefresh(
+                after: .queued,
+                petId: petId,
+                date: today,
+                activePetId: petId,
+                calendar: testCalendar,
+                today: today
+            ),
+            "A queued change has nothing confirmed for Home to read yet"
+        )
+        XCTAssertTrue(
+            RealPlannerService.sharedPlanNeedsRefresh(
+                after: .confirmed,
+                petId: petId,
+                date: today,
+                activePetId: petId,
+                calendar: testCalendar,
+                today: today
+            )
+        )
+        XCTAssertFalse(
+            RealPlannerService.sharedPlanNeedsRefresh(
+                after: .confirmed,
+                petId: petId,
+                date: day(2026, 7, 29),
+                activePetId: petId,
+                calendar: testCalendar,
+                today: today
+            ),
+            "Home renders today; another day's change must not replace it"
+        )
+        XCTAssertFalse(
+            RealPlannerService.sharedPlanNeedsRefresh(
+                after: .confirmed,
+                petId: petId,
+                date: today,
+                activePetId: UUID(),
+                calendar: testCalendar,
+                today: today
+            ),
+            "Home renders the active pet only"
+        )
+    }
+
+    /// The claim in doc 19 that Home and Planner share one plan state, held to
+    /// through the adapter the app actually runs in mock/compat mode.
+    func testCompletingInPlannerLeavesHomeConsistent() async throws {
+        let model = AppModel.preview()
+        let home = HomeViewModel(model: model)
+        await home.loadInitial()
+        let service = PlanServicePlannerAdapter(model: model)
+        _ = try await service.context()
+
+        let agenda = try await service.agenda(on: Date())
+        let target = try XCTUnwrap(
+            agenda.items.first { $0.state == .pending && $0.planItemId != nil }
+        )
+        XCTAssertEqual(home.snapshot?.occurrences.first { $0.id == target.occurrenceId }?.state, .pending)
+
+        _ = try await service.perform(.complete, on: target)
+
+        let completed = try XCTUnwrap(
+            home.snapshot?.occurrences.first { $0.id == target.occurrenceId }
+        )
+        XCTAssertEqual(completed.state, .completed)
+    }
+
+    func testSignOutClearsThePlanTheNextAccountMustNotSee() async {
+        let model = AppModel.preview()
+        let home = HomeViewModel(model: model)
+        await home.loadInitial()
+        XCTAssertNotNil(home.snapshot)
+
+        model.signOut()
+
+        XCTAssertNil(model.planState.snapshot)
+        XCTAssertNil(home.snapshot)
+    }
+
+    private func operation(
+        id: UUID,
+        state: OfflineOperation.State
+    ) -> OfflineOperation {
+        OfflineOperation(
+            id: id,
+            accountId: UUID(),
+            command: "create_recurring_task",
+            payload: .object([:]),
+            payloadFingerprint: id.uuidString,
+            clientIdempotencyKey: UUID().uuidString,
+            recordedAt: SupabaseCoding.iso8601Now(),
+            effectiveAt: nil,
+            createdAt: .now,
+            updatedAt: .now,
+            state: state,
+            attemptCount: 0
+        )
+    }
+
     private var testCalendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.locale = Locale(identifier: "en_CA")

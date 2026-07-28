@@ -5,16 +5,40 @@ import UIKit
 /// mutation-sync health. Household/member management follows with the hosted
 /// collaboration slice.
 struct SettingsView: View {
+    /// Screens inside the stack that a caller can open directly. Entry points
+    /// outside Home name a destination rather than dropping the caregiver at
+    /// the hub to find it again (IA §5.3, §10).
+    enum Destination: String, Hashable, Identifiable {
+        /// ST-01 — the hub itself.
+        case hub
+        /// ST-04 — members & invitations.
+        case members
+
+        var id: String { rawValue }
+
+        /// The stack a caller's chosen destination starts on. The hub is the
+        /// root, not a pushed screen, so opening it must not leave a back
+        /// button pointing at a duplicate of itself.
+        static func initialPath(opening destination: Destination) -> [Destination] {
+            destination == .hub ? [] : [destination]
+        }
+    }
+
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
+    @State private var path: [Destination]
     @State private var preferences = LocalNotificationPreferences.defaults
     @State private var permission = NotificationPermission.notDetermined
     @State private var isUpdatingNotifications = false
 
+    init(opening destination: Destination = .hub) {
+        _path = State(initialValue: Destination.initialPath(opening: destination))
+    }
+
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Form {
                 householdSection
                 remindersSection
@@ -25,6 +49,7 @@ struct SettingsView: View {
             .background(Color.pc.bg)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: Destination.self, destination: destination)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -37,6 +62,21 @@ struct SettingsView: View {
         }
     }
 
+    /// A destination that has lost its household resolves to the hub rather
+    /// than to an empty screen: the caregiver may have been removed while the
+    /// entry point was on screen (IA §6.8).
+    @ViewBuilder
+    private func destination(_ destination: Destination) -> some View {
+        switch destination {
+        case .hub:
+            EmptyView()
+        case .members:
+            if let household = model.household {
+                HouseholdMembersView(household: household)
+            }
+        }
+    }
+
     /// ST-01 hub → ST-04 (doc 16 §6). Hidden until a household exists,
     /// because there is nothing truthful to show before then.
     @ViewBuilder
@@ -44,12 +84,8 @@ struct SettingsView: View {
         if let household = model.household {
             Section {
                 LabeledContent("Household", value: household.name)
-                NavigationLink {
-                    HouseholdMembersView(household: household)
-                } label: {
-                    Text("Members & invitations")
-                }
-                .accessibilityHint("Shows who belongs to this household and any invitations")
+                NavigationLink("Members & invitations", value: Destination.members)
+                    .accessibilityHint("Shows who belongs to this household and any invitations")
             } header: {
                 Text("Household")
             } footer: {

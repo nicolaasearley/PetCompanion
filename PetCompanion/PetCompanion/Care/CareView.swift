@@ -50,6 +50,7 @@ struct CareView: View {
             }
             .background(Color.pc.bg)
             .navigationTitle("Care")
+            .profileEntry()
         }
     }
 

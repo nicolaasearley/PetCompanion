@@ -24,6 +24,7 @@ struct PlannerView: View {
                 }
             }
             .navigationTitle("Planner")
+            .profileEntry()
             .toolbar {
                 if let store {
                     ToolbarItem(placement: .topBarLeading) {

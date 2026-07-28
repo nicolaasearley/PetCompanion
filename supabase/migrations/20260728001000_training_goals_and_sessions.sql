@@ -880,7 +880,7 @@ begin
     raise exception 'this goal was retired; start it again to log a session' using errcode = '22023';
   end if;
 
-  select h.* into target_household from public.households where id = target_goal.household_id;
+  select h.* into target_household from public.households h where h.id = target_goal.household_id;
   today_local := public.household_current_local_date(target_household.id, coalesce(recorded_at_input, now()));
 
   effective_date_value := coalesce(

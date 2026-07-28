@@ -19,3 +19,7 @@ supabase/.branches/
 .env
 .env.*
 !.env.example
+
+# Claude Code — machine-local settings and agent worktrees
+.claude/settings.local.json
+.claude/worktrees/

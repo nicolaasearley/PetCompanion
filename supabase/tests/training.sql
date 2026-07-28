@@ -668,15 +668,14 @@ begin
     (crate->>'last_practiced_on')::date = current_date - 1,
     crate->>'last_practiced_on'
   );
+  -- Retire-then-restart leaves two goal rows for one skill. The engine keys
+  -- its state map by skill id, so the context must emit exactly one -- the
+  -- live goal, not whichever row happened to sort last.
   perform test_training.assert_true(
-    'context: the retired goal is carried through as retired, not completed',
-    exists (
-      select 1 from jsonb_array_elements(state) value
-      where value->>'skill_content_id' = 'skill.marker_intro'
-        and value->>'status' = 'retired'
-    )
-    or exists (
-      -- The restarted goal shares the skill id; both rows must be present.
+    'context: a retired-then-restarted skill is emitted once, as the live goal',
+    (select count(*) from jsonb_array_elements(state) value
+      where value->>'skill_content_id' = 'skill.marker_intro') = 1
+    and exists (
       select 1 from jsonb_array_elements(state) value
       where value->>'skill_content_id' = 'skill.marker_intro'
         and value->>'status' = 'active'
@@ -712,6 +711,40 @@ begin
       where value->>'skill_content_id' = 'skill.crate_comfort'
         and value->>'status' in ('active', 'completed')
     )
+  );
+end;
+$$;
+
+-- A goal that was retired and NOT restarted is carried through as its own
+-- status. "completed" would be a lie the engine acts on: it satisfies other
+-- skills' prerequisites (engine §12.3), and a household that gave up on crate
+-- comfort has not earned alone-time practice.
+do $$
+declare
+  context jsonb;
+  goal jsonb;
+begin
+  goal := test_training.command(
+    '33330000-0000-4000-8000-000000000001', 'start_training_goal',
+    jsonb_build_object('pet_id', '55550000-0000-4000-8000-000000000001',
+                       'skill_ref', 'skill.paw_handling')
+  );
+  perform test_training.command(
+    '33330000-0000-4000-8000-000000000001', 'retire_training_goal',
+    jsonb_build_object('goal_id', goal->'goal'->>'id')
+  );
+
+  context := public.write_path_generation_context(
+    '33330000-0000-4000-8000-000000000001', '55550000-0000-4000-8000-000000000001'
+  );
+  perform test_training.assert_true(
+    'context: a retired goal is reported as retired, never as completed',
+    exists (
+      select 1 from jsonb_array_elements(context->'training_state') value
+      where value->>'skill_content_id' = 'skill.paw_handling'
+        and value->>'status' = 'retired'
+    ),
+    context->>'training_state'
   );
 end;
 $$;

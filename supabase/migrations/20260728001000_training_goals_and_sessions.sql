@@ -1039,7 +1039,12 @@ set search_path = public
 as $$
   select coalesce(jsonb_agg(state order by state->>'skill_content_id'), '[]'::jsonb)
   from (
-    select jsonb_strip_nulls(jsonb_build_object(
+    -- One row per skill. Retiring frees the (pet, skill) pair, so a household
+    -- that retired and restarted a skill has two goal rows for it; the engine
+    -- keys its state map by skill id, so emitting both would let whichever
+    -- arrived last decide. The live goal is the one that describes the pet
+    -- today, and the most recent retirement stands in when there is none.
+    select distinct on (g.skill_ref) jsonb_strip_nulls(jsonb_build_object(
       'skill_content_id', g.skill_ref,
       -- The engine's four-value vocabulary has no "retired", so it is carried
       -- through as its own value: a retired goal must neither be re-proposed
@@ -1058,6 +1063,7 @@ as $$
     )) as state
     from public.training_goals g
     where g.pet_id = target_pet_id
+    order by g.skill_ref, (g.status = 'retired'), g.started_at desc
   ) goals;
 $$;
 

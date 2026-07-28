@@ -1,0 +1,42 @@
+{
+  "scenario": "socialization rotates to the least recently visited category",
+  "local_date": "2026-08-06",
+  "capacity": "normal",
+  "recent_history": [
+    {
+      "local_date": "2026-08-05",
+      "content_id": "soc.environments.front_garden",
+      "category": "socialization",
+      "socialization_category": "Environments",
+      "outcome": "completed"
+    },
+    {
+      "local_date": "2026-08-04",
+      "content_id": "soc.sounds.vacuum_low",
+      "category": "socialization",
+      "socialization_category": "Sounds",
+      "outcome": "completed"
+    },
+    {
+      "local_date": "2026-08-03",
+      "content_id": "soc.surfaces.grass",
+      "category": "socialization",
+      "socialization_category": "Surfaces",
+      "outcome": "completed"
+    },
+    {
+      "local_date": "2026-08-01",
+      "content_id": "soc.people.calm_adult_visitor",
+      "category": "socialization",
+      "socialization_category": "People",
+      "outcome": "completed"
+    }
+  ],
+  "expect": {
+    "recommended_content_ids": ["soc.people.calm_adult_visitor"],
+    "absent_content_ids": ["soc.environments.front_garden"],
+    "recommended_count": 3,
+    "explanations": true,
+    "no_duplicates": true
+  }
+}

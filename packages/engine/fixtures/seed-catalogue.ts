@@ -115,6 +115,14 @@ export const SEED_CATALOGUE: CatalogueInput = {
       { stage_from: "settling_in", skill_not_paused: true },
     ),
     rule(
+      "rule.alone_time",
+      "training",
+      2,
+      "short",
+      "Short, easy departures now help {Puppy} feel fine alone later.",
+      { goal_active_or_stage_lte: "foundations" },
+    ),
+    rule(
       "rule.brushing",
       "grooming",
       3,
@@ -123,6 +131,9 @@ export const SEED_CATALOGUE: CatalogueInput = {
       { stage_from: "settling_in", household_adjustable: true },
     ),
   ],
+  // A curated subset of the seeded skills: enough to reproduce the engine's
+  // documented example plans (§26.1–26.2) without a wider catalogue outranking
+  // them. Scenarios that need other skills add them through `catalogue_extra`.
   training_skills: [
     ["skill.marker_intro", "Marker word (\"yes!\")", [], "settling_in", "tiny", "3-5/week"],
     ["skill.name_response", "Name response", [], "settling_in", "tiny", "4-6/week"],

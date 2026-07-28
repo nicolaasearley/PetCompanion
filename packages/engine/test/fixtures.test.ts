@@ -8,6 +8,7 @@ import { SEED_CATALOGUE } from "../fixtures/seed-catalogue.ts";
 import { generatePlan } from "../src/index.ts";
 import type {
   CapacityMode,
+  CatalogueInput,
   Category,
   GenerationContext,
   HistoryEntry,
@@ -47,6 +48,11 @@ interface Fixture {
     expected_homecoming_date?: string;
   };
   household?: Partial<GenerationContext["household"]>;
+  /**
+   * Additional catalogue rows for scenarios that need seeded content the shared
+   * fixture catalogue deliberately omits. Rows are appended, never replaced.
+   */
+  catalogue_extra?: Partial<CatalogueInput>;
   obligations?: FixtureObligation[];
   events?: GenerationContext["events"];
   training_state?: TrainingStateInput[];
@@ -58,6 +64,7 @@ interface Fixture {
     required_titles?: string[];
     recommended_content_ids?: string[];
     absent_content_ids?: string[];
+    absent_titles?: string[];
     sections?: Partial<Record<PlanResult["items"][number]["section"], string[]>>;
     no_duplicates?: boolean;
     explanations?: boolean;
@@ -102,6 +109,18 @@ function occurrence(localDate: string, input: FixtureObligation): TaskOccurrence
   };
 }
 
+function catalogueFor(fixture: Fixture): CatalogueInput {
+  const extra = fixture.catalogue_extra;
+  if (!extra) return SEED_CATALOGUE;
+  return {
+    development_stages: [...SEED_CATALOGUE.development_stages, ...(extra.development_stages ?? [])],
+    task_definitions: [...SEED_CATALOGUE.task_definitions, ...(extra.task_definitions ?? [])],
+    recommendation_rules: [...SEED_CATALOGUE.recommendation_rules, ...(extra.recommendation_rules ?? [])],
+    training_skills: [...SEED_CATALOGUE.training_skills, ...(extra.training_skills ?? [])],
+    socialization_catalog: [...SEED_CATALOGUE.socialization_catalog, ...(extra.socialization_catalog ?? [])],
+  };
+}
+
 function contextFromFixture(fixture: Fixture): GenerationContext {
   return {
     local_date: fixture.local_date,
@@ -134,7 +153,7 @@ function contextFromFixture(fixture: Fixture): GenerationContext {
     },
     active_occurrences: (fixture.obligations ?? []).map((item) => occurrence(fixture.local_date, item)),
     events: fixture.events ?? [],
-    catalogue: SEED_CATALOGUE,
+    catalogue: catalogueFor(fixture),
     training_state: fixture.training_state ?? [],
     recent_history: fixture.recent_history ?? [],
   };
@@ -173,6 +192,9 @@ function assertFixture(fixture: Fixture, result: PlanResult): void {
       !result.items.some((item) => item.content_ref?.content_id === contentId),
       `unexpected content "${contentId}"`,
     );
+  }
+  for (const title of expectation.absent_titles ?? []) {
+    assert.ok(!result.items.some((item) => item.title === title), `unexpected item "${title}"`);
   }
   for (const [section, titles] of Object.entries(expectation.sections ?? {})) {
     for (const title of titles ?? []) {

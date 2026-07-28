@@ -30,6 +30,14 @@ final class MockBackend {
     /// landing in `.today` (B5).
     private var preCompletionSection: [UUID: PlanSection] = [:]
 
+    /// Training catalogue and household goals (F08). The catalogue uses the
+    /// same content ids as `supabase/seed.sql`, so a goal started in mock mode
+    /// names a skill the real backend would also recognise.
+    /// See `MockBackend+Training.swift` for the lifecycle rules it enforces.
+    var trainingCatalogue: [TrainingSkill] = MockTrainingCatalogue.skills
+    var trainingGoals: [TrainingGoal] = []
+    var trainingSessions: [TrainingSession] = []
+
     let calendar = Calendar.current
 
     var currentUser: UserAccount? {

@@ -608,7 +608,7 @@ final class RealPlannerService: PlannerService {
         calendar: Calendar
     ) -> PlannerAgendaItem {
         let state: PlannerAgendaState
-        if queuedOccurrenceIds.contains(row.id) {
+        if queuedWork.isBadged(occurrenceId: row.id) {
             state = .queued
         } else {
             state = switch row.state {

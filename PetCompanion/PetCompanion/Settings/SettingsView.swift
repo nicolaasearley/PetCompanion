@@ -13,6 +13,8 @@ struct SettingsView: View {
         case hub
         /// ST-04 — members & invitations.
         case members
+        /// Changes the service refused, and the only place to clear them.
+        case rejectedChanges
 
         var id: String { rawValue }
 
@@ -73,6 +75,10 @@ struct SettingsView: View {
         case .members:
             if let household = model.household {
                 HouseholdMembersView(household: household)
+            }
+        case .rejectedChanges:
+            if let queue = model.mutationQueue {
+                RejectedChangesView(queue: queue)
             }
         }
     }
@@ -138,14 +144,20 @@ struct SettingsView: View {
     }
 
     private var syncSection: some View {
-        Section("Sync") {
+        Section {
             if let queue = model.mutationQueue {
                 LabeledContent("Status", value: syncStatusText(queue.status))
                 if queue.status.pendingCount > 0 {
                     LabeledContent("Waiting to sync", value: "\(queue.status.pendingCount)")
                 }
                 if queue.status.rejectedCount > 0 {
-                    LabeledContent("Needs review", value: "\(queue.status.rejectedCount)")
+                    // A refused change is never retried, so a bare count was
+                    // a dead end: it could only ever count up. The row is a
+                    // way in, and out (doc 09 §15.1).
+                    NavigationLink(value: Destination.rejectedChanges) {
+                        LabeledContent("Needs review", value: "\(queue.status.rejectedCount)")
+                    }
+                    .accessibilityHint("Shows changes the household refused, and lets you discard them")
                 }
                 Button("Try syncing now") {
                     Task { await model.replayOfflineOperations() }
@@ -153,6 +165,12 @@ struct SettingsView: View {
                 .disabled(queue.status.isReplaying)
             } else {
                 LabeledContent("Status", value: "Demo data")
+            }
+        } header: {
+            Text("Sync")
+        } footer: {
+            if let queue = model.mutationQueue, queue.status.rejectedCount > 0 {
+                Text("Refused changes were never applied. Review them to decide what to do.")
             }
         }
     }

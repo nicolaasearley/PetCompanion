@@ -349,6 +349,15 @@ final class OfflineOperationQueue {
         _ = await replaySerially()
     }
 
+    /// Changes the server refused, oldest first. They are never retried, so
+    /// they stay here until the caregiver looks at them and decides.
+    var rejectedOperations: [OfflineOperation] {
+        operations.filter { $0.state == .rejected }
+    }
+
+    /// Forgets a refused change for good. There is nothing to retry and
+    /// nothing to recover: the command never took effect on the server, and
+    /// this removes the only remaining record of the intent.
     func discardRejected(operationId: UUID) {
         operations.removeAll { $0.id == operationId && $0.state == .rejected }
         persist()

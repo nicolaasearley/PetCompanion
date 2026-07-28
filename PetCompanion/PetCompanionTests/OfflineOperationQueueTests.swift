@@ -268,6 +268,126 @@ final class OfflineOperationQueueTests: XCTestCase {
         XCTAssertEqual(queue.operations.map(\.command), ["first-account"])
     }
 
+    /// A refused change is never retried, so without a way to discard it the
+    /// "needs review" count could only ever climb.
+    func testDiscardingARefusedChangeClearsItForGoodAndLeavesRealWorkAlone() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let accountId = UUID()
+        let transport = Transport([.rejected, .unavailable])
+        let queue = OfflineOperationQueue(
+            transport: transport,
+            store: OfflineOperationStore(baseDirectory: directory)
+        )
+        queue.activate(accountId: accountId)
+
+        do {
+            _ = try await queue.submit(command: "skip_item", payload: Payload(value: "A"))
+            XCTFail("Expected rejection")
+        } catch OfflineMutationError.rejected {
+            // Expected.
+        }
+        do {
+            _ = try await queue.submit(command: "complete_occurrence", payload: Payload(value: "B"))
+            XCTFail("Expected the second write to remain queued")
+        } catch OfflineMutationError.queued {
+            // Expected.
+        }
+
+        let refused = try XCTUnwrap(queue.rejectedOperations.first)
+        XCTAssertEqual(queue.rejectedOperations.count, 1)
+        XCTAssertEqual(refused.command, "skip_item")
+
+        queue.discardRejected(operationId: refused.id)
+
+        XCTAssertTrue(queue.rejectedOperations.isEmpty)
+        XCTAssertEqual(queue.status.rejectedCount, 0)
+        XCTAssertEqual(
+            queue.operations.map(\.command),
+            ["complete_occurrence"],
+            "Discarding one refused change must not touch work still waiting to sync"
+        )
+        XCTAssertEqual(queue.status.pendingCount, 1)
+
+        // Gone from disk too: a discard the next launch undoes is not a
+        // discard, and the copy promised it was permanent.
+        queue.deactivate()
+        queue.activate(accountId: accountId)
+        XCTAssertTrue(queue.rejectedOperations.isEmpty)
+        XCTAssertEqual(queue.operations.map(\.command), ["complete_occurrence"])
+    }
+
+    func testDiscardOnlyEverRemovesTheRefusedOperationItNames() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let transport = Transport([.unavailable])
+        let queue = OfflineOperationQueue(
+            transport: transport,
+            store: OfflineOperationStore(baseDirectory: directory)
+        )
+        queue.activate(accountId: UUID())
+        do {
+            _ = try await queue.submit(command: "complete_occurrence", payload: Payload(value: "A"))
+            XCTFail("Expected the write to remain queued")
+        } catch OfflineMutationError.queued {
+            // Expected.
+        }
+
+        let queued = try XCTUnwrap(queue.operations.first)
+        queue.discardRejected(operationId: queued.id)
+
+        XCTAssertEqual(
+            queue.operations.map(\.command),
+            ["complete_occurrence"],
+            "Queued work is still going to be sent; only a refusal is discardable"
+        )
+        queue.discardRejected(operationId: UUID())
+        XCTAssertEqual(queue.operations.count, 1)
+    }
+
+    /// The review screen has to name the act, because ids and command names
+    /// are not something a caregiver can recognise or decide about.
+    func testEveryRefusedChangeCanBeDescribedWithoutItsPayload() {
+        let commands = [
+            "complete_occurrence", "undo_completion", "skip_item", "undo_skip",
+            "snooze_occurrence", "reschedule_occurrence", "cancel_occurrence",
+            "edit_occurrence", "create_task", "create_recurring_task",
+            "edit_schedule_future", "archive_schedule", "accept_recommendation",
+            "set_default_capacity", "set_routine_preferences", "create_household",
+            "create_pet", "create_invitation", "revoke_invitation",
+            "accept_invitation", "decline_invitation",
+        ]
+
+        let titles = commands.map { operation(command: $0).displayTitle }
+        XCTAssertEqual(Set(titles).count, titles.count, "Two commands must not read as the same act")
+        for title in titles {
+            XCTAssertFalse(title.contains("_"), "A command name is not a description")
+        }
+        XCTAssertEqual(operation(command: "skip_item").displayTitle, "Skip a task")
+        XCTAssertEqual(
+            operation(command: "some_future_command").displayTitle,
+            "A change to your household",
+            "An unmapped command still has to be describable rather than blank"
+        )
+    }
+
+    private func operation(command: String) -> OfflineOperation {
+        OfflineOperation(
+            id: UUID(),
+            accountId: UUID(),
+            command: command,
+            payload: .object([:]),
+            payloadFingerprint: command,
+            clientIdempotencyKey: UUID().uuidString,
+            recordedAt: SupabaseCoding.iso8601Now(),
+            effectiveAt: nil,
+            createdAt: .now,
+            updatedAt: .now,
+            state: .rejected,
+            attemptCount: 1
+        )
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("OfflineOperationQueueTests-\(UUID().uuidString)")

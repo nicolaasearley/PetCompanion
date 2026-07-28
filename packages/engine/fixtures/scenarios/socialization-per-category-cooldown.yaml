@@ -1,0 +1,50 @@
+{
+  "scenario": "a shown socialization recommendation cools down its own category, not the whole rule",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 5,
+  "recent_history": [
+    {
+      "local_date": "2026-08-05",
+      "content_id": "soc.environments.front_garden",
+      "rule_content_id": "rule.socialization_breadth",
+      "category": "socialization",
+      "socialization_category": "Environments",
+      "outcome": "shown"
+    },
+    {
+      "local_date": "2026-08-04",
+      "content_id": "soc.sounds.vacuum_low",
+      "rule_content_id": "rule.socialization_breadth",
+      "category": "socialization",
+      "socialization_category": "Sounds",
+      "outcome": "completed"
+    },
+    {
+      "local_date": "2026-08-03",
+      "content_id": "soc.surfaces.grass",
+      "rule_content_id": "rule.socialization_breadth",
+      "category": "socialization",
+      "socialization_category": "Surfaces",
+      "outcome": "completed"
+    },
+    {
+      "local_date": "2026-08-01",
+      "content_id": "soc.people.calm_adult_visitor",
+      "rule_content_id": "rule.socialization_breadth",
+      "category": "socialization",
+      "socialization_category": "People",
+      "outcome": "completed"
+    }
+  ],
+  "expect": {
+    "recommended_content_ids": ["soc.people.calm_adult_visitor"],
+    "absent_content_ids": [
+      "soc.environments.front_garden",
+      "soc.sounds.vacuum_low",
+      "soc.surfaces.grass"
+    ],
+    "explanations": true,
+    "no_duplicates": true
+  }
+}

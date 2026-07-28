@@ -65,6 +65,21 @@ enum NotificationDeepLinkResolver {
             return .planItem(id: planItemId)
         }
     }
+
+    /// Why a failed plan read could not open the reminder's target.
+    ///
+    /// The distinction that matters is between an outage and a fact. A day
+    /// the engine never planned — a reminder tapped long after its day
+    /// elapsed, now that plan reads are genuinely date-scoped — is not a
+    /// service failure, and copy claiming one would tell the caregiver to
+    /// retry something that will never succeed (IA §15.1).
+    static func failure(for error: Error) -> DeepLinkFailure {
+        switch error {
+        case PlanServiceError.notSignedIn: .noAccess
+        case PlanServiceError.noPlanForDay: .targetNoLongerInPlan
+        default: .planUnavailable
+        }
+    }
 }
 
 /// Receives notification taps and holds them until the app can resolve them.

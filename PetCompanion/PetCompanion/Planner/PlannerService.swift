@@ -61,14 +61,31 @@ final class PlanServicePlannerAdapter: PlannerService {
             throw PlannerServiceError.unavailable("Add a pet before creating a plan.")
         }
         let calendar = model.household?.clock.calendar ?? .current
-        let snapshot = try await model.plans.plan(
-            forPet: pet.id,
-            on: date,
-            resectioningCompleted: true
-        )
-        guard calendar.isDate(snapshot.plan.localDate, inSameDayAs: date) else {
-            throw PlannerServiceError.unavailable(
-                "This date is not available from Planner sync yet. Today's shared plan is still available."
+        let snapshot: PlanSnapshot
+        do {
+            snapshot = try await model.plans.plan(
+                forPet: pet.id,
+                on: date,
+                resectioningCompleted: true
+            )
+        } catch PlanServiceError.noPlanForDay {
+            // Reported, not raised. The read succeeded; the day simply has
+            // no plan, and Planner says so as an empty-day state rather than
+            // as a failure with a retry that would never help.
+            //
+            // This replaces a guard that compared `plan.localDate` against
+            // the requested date and rejected any mismatch. It was covering
+            // for a read that ignored its date argument entirely, and it was
+            // wrong in its own right: `localDate` decodes at GMT, so the
+            // comparison rejected correct snapshots for every household west
+            // of it. The service is now date-scoped, so a returned snapshot
+            // is the requested day by construction.
+            return PlannerDayAgenda(
+                date: calendar.startOfDay(for: date),
+                items: [],
+                lastVerifiedAt: nil,
+                isStale: false,
+                coverage: .notGenerated
             )
         }
         snapshotsByDay[calendar.startOfDay(for: date)] = snapshot

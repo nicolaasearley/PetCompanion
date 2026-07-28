@@ -223,6 +223,21 @@ final class AppModel {
         return .createHousehold
     }
 
+    /// Post-acceptance routing (ON-05 → HM-01). An invited caregiver
+    /// normally lands straight in the shared plan; a household that has no
+    /// pet yet continues at ON-07 rather than showing an empty Home.
+    @discardableResult
+    func joinedHousehold(_ joined: Household) async -> PostAuthDestination {
+        household = joined
+        if let pet = try? await households.pets(householdId: joined.id).first {
+            activePet = pet
+            phase = .main
+            return .main
+        }
+        pendingOnboardingDestination = .addPet
+        return .addPet
+    }
+
     func consumePendingOnboardingDestination() -> PostAuthDestination? {
         defer { pendingOnboardingDestination = nil }
         return pendingOnboardingDestination

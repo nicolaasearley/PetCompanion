@@ -10,6 +10,8 @@ enum OnboardingRoute: Hashable {
     case addPet
     case routineBasics
     case confirmEmail(String)
+    /// ON-05. Carries a token when the invitee arrived from a link.
+    case reviewInvitation(String?)
 }
 
 struct OnboardingFlowView: View {
@@ -34,7 +36,14 @@ struct OnboardingFlowView: View {
                 case .signIn:
                     AuthFormView(mode: .signIn, onAuthenticated: routeAfterAuth)
                 case .createHousehold:
-                    CreateHouseholdView(onContinue: { path.append(.addPet) })
+                    CreateHouseholdView(
+                        onContinue: { path.append(.addPet) },
+                        onHasInvitation: { path.append(.reviewInvitation(nil)) }
+                    )
+                case .reviewInvitation(let token):
+                    InvitationReviewView(initialToken: token) { household in
+                        Task { apply(await model.joinedHousehold(household)) }
+                    }
                 case .addPet:
                     AddPetView(onContinue: { path.append(.routineBasics) })
                 case .routineBasics:

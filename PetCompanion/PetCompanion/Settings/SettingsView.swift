@@ -16,6 +16,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                householdSection
                 remindersSection
                 syncSection
                 accountSection
@@ -32,6 +33,27 @@ struct SettingsView: View {
             .task {
                 preferences = model.notifications.preferences
                 permission = model.notifications.permission
+            }
+        }
+    }
+
+    /// ST-01 hub → ST-04 (doc 16 §6). Hidden until a household exists,
+    /// because there is nothing truthful to show before then.
+    @ViewBuilder
+    private var householdSection: some View {
+        if let household = model.household {
+            Section {
+                LabeledContent("Household", value: household.name)
+                NavigationLink {
+                    HouseholdMembersView(household: household)
+                } label: {
+                    Text("Members & invitations")
+                }
+                .accessibilityHint("Shows who belongs to this household and any invitations")
+            } header: {
+                Text("Household")
+            } footer: {
+                Text("Caregivers share every pet, plan, and record. Completions always show who did them.")
             }
         }
     }
@@ -111,7 +133,7 @@ struct SettingsView: View {
         } header: {
             Text("Account")
         } footer: {
-            Text("Shared household invitations and member roles arrive after the hosted Supabase migration.")
+            Text("Your account is yours alone. Caregivers join a household by invitation, never by sharing a sign-in.")
         }
     }
 

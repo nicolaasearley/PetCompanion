@@ -93,7 +93,7 @@ final class RealAuthService: AuthService {
     func signIn(email: String, password: String) async throws -> UserAccount {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let session = try await client.auth.signIn(email: trimmed, password: password)
-        let displayName = await resolvedDisplayName(for: session.user)
+        let displayName = await ensureProfile(for: session.user)
         let account = UserAccount(id: session.user.id, displayName: displayName)
         _currentUser = account
         return account
@@ -106,11 +106,18 @@ final class RealAuthService: AuthService {
 
     // MARK: - Profile
 
-    /// Source of truth for display name is `user_profiles.display_name`,
+    /// Source of truth for the display name is `user_profiles.display_name`,
     /// not the auth user's metadata (which only reflects what was true at
-    /// sign-up time) — falls back to the metadata/email-derived name if
-    /// the profile row isn't readable yet.
-    private func resolvedDisplayName(for user: User) async -> String {
+    /// sign-up time). Returns it, creating the row when it is missing.
+    ///
+    /// Sign-up only writes the profile when it already has a session, so the
+    /// hosted confirm-by-email path arrives here without one. That row is
+    /// what lets co-members see this caregiver's name at all (DM §7.1 /
+    /// `household_member_profiles`), so an invited partner would otherwise
+    /// join the household and be missing from ST-04. The write is skipped
+    /// entirely when the row is already there, so a later rename is never
+    /// clobbered by stale sign-up metadata.
+    private func ensureProfile(for user: User) async -> String {
         struct ProfileRow: Decodable { let display_name: String }
         if let response = try? await client
             .from("user_profiles")
@@ -121,10 +128,15 @@ final class RealAuthService: AuthService {
            let profile = try? SupabaseCoding.restDecoder.decode(ProfileRow.self, from: response.data) {
             return profile.display_name
         }
+
+        let fallback: String
         if case .string(let name)? = user.userMetadata["display_name"] {
-            return name
+            fallback = name
+        } else {
+            fallback = Self.displayName(fromEmail: user.email ?? "")
         }
-        return Self.displayName(fromEmail: user.email ?? "")
+        try? await upsertProfile(userId: user.id, displayName: fallback)
+        return fallback
     }
 
     private func upsertProfile(userId: UUID, displayName: String) async throws {

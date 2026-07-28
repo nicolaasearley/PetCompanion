@@ -81,6 +81,93 @@ final class MockBackend {
         return created
     }
 
+    // MARK: - Invitations
+
+    /// Newest first, mirroring the ordering the real service asks Postgres
+    /// for. Terminal invitations are kept so ST-04 can show what happened.
+    private(set) var invitations: [HouseholdInvitation] = []
+    /// Plaintext tokens exist server-side only in hashed form; the mock keeps
+    /// them in memory purely so the preview/accept flow can be exercised.
+    private var invitationTokens: [String: UUID] = [:]
+
+    func createInvitation(
+        householdId: UUID,
+        createdBy: UUID,
+        expiresInHours: Int
+    ) -> CreatedInvitation {
+        let invitation = HouseholdInvitation(
+            householdId: householdId,
+            createdBy: createdBy,
+            expiresAt: Date().addingTimeInterval(TimeInterval(expiresInHours) * 3600)
+        )
+        let token = (0..<InvitationToken.length)
+            .map { _ in "0123456789abcdef".randomElement()! }
+            .reduce(into: "") { $0.append($1) }
+        invitations.insert(invitation, at: 0)
+        invitationTokens[token] = invitation.id
+        return CreatedInvitation(
+            invitation: invitation,
+            householdName: household?.name ?? "Your household",
+            token: token
+        )
+    }
+
+    func invitation(forToken token: String) -> HouseholdInvitation? {
+        guard let id = invitationTokens[token] else { return nil }
+        return invitations.first { $0.id == id }
+    }
+
+    func resolveInvitation(id: UUID, status: HouseholdInvitation.Status, acceptedBy: UUID? = nil) {
+        guard let index = invitations.firstIndex(where: { $0.id == id }) else { return }
+        invitations[index].status = status
+        invitations[index].acceptedBy = acceptedBy
+        invitations[index].resolvedAt = Date()
+    }
+
+    func previewInvitation(token: String) -> InvitationPreview {
+        guard let invitation = invitation(forToken: token) else {
+            return InvitationPreview(state: .notFound)
+        }
+        let inviter = users[invitation.createdBy]?.displayName
+        let state: InvitationPreview.State = switch invitation.displayState() {
+        case .pending:
+            members.contains { $0.userId == currentUserId } ? .alreadyMember : .valid
+        case .expired: .expired
+        case .revoked: .revoked
+        case .declined: .declined
+        case .accepted: invitation.acceptedBy == currentUserId ? .acceptedByYou : .alreadyUsed
+        }
+        return InvitationPreview(
+            state: state,
+            householdName: household?.name,
+            inviterDisplayName: inviter,
+            expiresAt: invitation.expiresAt
+        )
+    }
+
+    func acceptInvitation(token: String, userId: UUID) throws -> Household {
+        guard let invitation = invitation(forToken: token) else { throw InvitationError.notFound }
+        guard let household else { throw InvitationError.notFound }
+        switch invitation.displayState() {
+        case .pending: break
+        case .expired: throw InvitationError.expired
+        case .revoked, .declined, .accepted:
+            throw InvitationError.alreadyResolved("This invitation has already been used.")
+        }
+        guard !members.contains(where: { $0.userId == userId }) else {
+            throw InvitationError.alreadyMember
+        }
+        resolveInvitation(id: invitation.id, status: .accepted, acceptedBy: userId)
+        members.append(
+            HouseholdMember(
+                userId: userId,
+                displayName: users[userId]?.displayName ?? "Caregiver",
+                role: invitation.roleGranted
+            )
+        )
+        return household
+    }
+
     @discardableResult
     func createPet(name: String, birthInfo: BirthInfo, homecomingDate: Date?) -> Pet {
         guard let household else {

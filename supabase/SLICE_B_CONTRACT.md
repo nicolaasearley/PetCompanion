@@ -1,8 +1,9 @@
-# Slice B daily-coordination backend contract
+# Slice B backend contract
 
 This is the client handoff for migrations
-`202607270001_slice_b_coordination_foundation.sql` and
-`202607270002_slice_b_coordination_commands.sql`.
+`202607270001_slice_b_coordination_foundation.sql`,
+`202607270002_slice_b_coordination_commands.sql` (daily coordination), and
+`20260728000200_household_invitations.sql` (shared care).
 
 ## Transport envelope
 
@@ -57,6 +58,10 @@ an exact replay and sets `idempotent_replay` to `true`.
 | `undo_skip` | `occurrence_id` | `note` | `occurrence`, `disposition`, `cleared_skip_ids[]` |
 | `edit_schedule_future` | `schedule_id`, `expected_revision`, `split_date`, `recurrence` | `title`, `assignment`, `reminder_config`, successor IDs, `note` | `superseded_schedule`, `successor_schedule`, `task_definition`, `future_occurrences_cancelled`, `cancelled_occurrences[]`, `occurrences[]` |
 | `archive_schedule` | `schedule_id`, `expected_revision`, `confirm_required: true` | `note` | `task_schedule`, `occurrences_cancelled`, `occurrences[]` |
+| `create_invitation` | `household_id` | `invitation_id`, `expires_in_hours` (1–336, default 168), `role_granted` (`caregiver`) | `invitation`, `token` (once), `token_returned_once` |
+| `revoke_invitation` | `invitation_id` | — | `invitation` |
+| `accept_invitation` | `token` | — | `household`, `membership`, `invitation` |
+| `decline_invitation` | `token` | — | `invitation` |
 
 Every returned schedule, definition, and occurrence includes its authoritative
 revision. Both create operations and this-and-future edits return materialized
@@ -129,6 +134,53 @@ scheduled_for, dedupe_key, state, resolved_at, resolution_reason,
 created_at, updated_at
 ```
 
+## Invitations (E02)
+
+`create_invitation` is owner-only. The share token is generated server-side
+and stored only as a SHA-256 hash, so the plaintext `token` appears **once**,
+in the live create response — it is not written to `command_log`, and an
+idempotent replay returns the same invitation with `token` absent and
+`token_returned_once: true`. Clients must redact the token from any log and
+must not queue invitation commands offline. `accept_invitation` and
+`decline_invitation` carry the token in the payload; the edge function
+redacts it before the command is logged.
+
+Acceptance is single-use and atomic: it creates exactly one active membership
+or changes nothing. Re-submitting a completed acceptance by the same user
+returns the original result (DM 10 §7.4). Every outcome has its own code so
+ON-05 can explain itself:
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `INVITATION_NOT_FOUND` | 404 | The token matches no invitation |
+| `INVITATION_EXPIRED` | 410 | Past `expires_at` |
+| `INVITATION_ALREADY_RESOLVED` | 409 | Already accepted, declined, or revoked |
+| `ALREADY_A_MEMBER` | 409 | The caller is already active in that household |
+| `HOUSEHOLD_CLOSED` | 409 | The household is closed |
+| `SINGLE_HOUSEHOLD_LIMIT` | 409 | The caller is already active in another household |
+
+Pre-acceptance disclosure uses the read-only RPC
+`invitation_preview(token_input)`, callable by any authenticated user. It
+returns `status` plus **only** `household_name`, `inviter_display_name`,
+`expires_at`, and `role_granted` (DM 10 §7.4), and returns
+`{"status":"not_found"}` alone for an unknown token. Statuses are `valid`,
+`expired`, `revoked`, `declined`, `already_used`, `accepted_by_you`,
+`already_member`, `household_closed`, `other_household`, `not_found`.
+
+Additional read models:
+
+`household_invitations` — `token_hash` is **not** granted to clients; select
+the explicit column list `id, household_id, created_by, role_granted,
+expires_at, status, accepted_by, resolved_at, created_at, updated_at,
+updated_by`. A row can still read `pending` after its expiry (there is no
+sweeper job), so treat `status = 'pending' and expires_at <= now()` as
+expired, exactly as the server does.
+
+`household_member_profiles` (view) — `membership_id, household_id, user_id,
+role, status, joined_at, ended_at, display_name, user_status`. This is the
+only way to resolve another member's display name; `user_profiles` RLS stays
+self-only.
+
 ## Behavioral invariants
 
 - A rescheduled occurrence retains its `id`, `occurrence_key`, and
@@ -148,6 +200,9 @@ created_at, updated_at
   duplicate it; undo cancels the derived next ordinal.
 - Optimistic writes use `expected_revision`; stale values fail with
   `REVISION_CONFLICT`.
+- An active household always keeps at least one active owner: removing or
+  demoting the last one is rejected by a database trigger, not only by the
+  write path.
 
 ## Local migration and verification
 
@@ -161,5 +216,5 @@ bash supabase/tests/run.sh
 
 The runner derives `project_id` from `supabase/config.toml` and targets only
 `supabase_db_petcompanion`. It runs the RLS, invariant, core-command,
-generation-lifecycle, and daily-coordination suites. Each suite rolls back its
-fixtures.
+generation-lifecycle, daily-coordination, and household-invitation suites.
+Each suite rolls back its fixtures.

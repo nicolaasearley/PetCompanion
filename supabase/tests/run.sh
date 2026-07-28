@@ -75,6 +75,10 @@ run_suite "${SCRIPT_DIR}/coordination.sql" "Daily coordination suite"
 coordination_status=$?
 [[ ${coordination_status} -ne 0 ]] && overall_status=1
 
+run_suite "${SCRIPT_DIR}/invitations.sql" "Household invitations suite"
+invitations_status=$?
+[[ ${invitations_status} -ne 0 ]] && overall_status=1
+
 echo ""
 echo "=================================================================="
 echo "SLICE A+B DATABASE TEST SUMMARY"

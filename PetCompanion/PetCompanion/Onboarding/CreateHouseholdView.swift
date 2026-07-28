@@ -5,6 +5,9 @@ import SwiftUI
 /// US-010). Creation retry is idempotent server-side.
 struct CreateHouseholdView: View {
     let onContinue: () -> Void
+    /// ON-05 entry for someone who was invited instead of starting a
+    /// household of their own (doc 14 §17.2).
+    var onHasInvitation: (() -> Void)?
 
     @Environment(AppModel.self) private var model
     @State private var name = ""
@@ -67,6 +70,15 @@ struct CreateHouseholdView: View {
                 }
 
                 PrimaryButton(title: "Continue", isLoading: isSubmitting, action: submit)
+
+                if let onHasInvitation {
+                    VStack(alignment: .leading, spacing: PCSpacing.sm) {
+                        Text("Joining someone else's household?")
+                            .font(Font.pc.secondary)
+                            .foregroundStyle(Color.pc.inkSecondary)
+                        SecondaryButton(title: "I have an invitation", action: onHasInvitation)
+                    }
+                }
             }
             .padding(PCSpacing.screenMargin)
         }

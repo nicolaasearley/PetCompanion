@@ -43,7 +43,7 @@ struct MainTabView: View {
                         PlannerView()
                     }
                     Tab("Training", systemImage: "graduationcap", value: .training) {
-                        TrainingView()
+                        TrainingTabView()
                     }
                     Tab("Care", systemImage: "heart.text.square", value: .care) {
                         CareView()

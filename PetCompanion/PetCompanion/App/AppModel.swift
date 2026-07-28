@@ -38,6 +38,9 @@ final class AppModel {
     /// Real environments expose the durable, account-scoped mutation queue
     /// so Home/Planner can render exact pending/failure counts.
     private(set) var mutationQueue: OfflineOperationQueue?
+    /// Socialization passport backing (F09). Nil in mock/preview builds, where
+    /// `makeSocializationStore()` falls back to the in-memory service.
+    private(set) var socialization: (any SocializationService)?
     /// Local-only reminder coordinator. Permission is requested only by an
     /// explicit settings action through this protocol.
     private(set) var notifications: any LocalNotificationServicing
@@ -158,6 +161,10 @@ final class AppModel {
             operationQueue: operationQueue
         )
         mutationQueue = operationQueue
+        socialization = RealSocializationService(
+            client: client,
+            operationQueue: operationQueue
+        )
         self.notifications = notifications
         backendMode = resolvedMode
 
@@ -340,6 +347,20 @@ final class AppModel {
         guard phase == .main, let target = deferredDeepLink else { return }
         deferredDeepLink = nil
         Task { await open(target) }
+    }
+
+    /// Builds the socialization passport's store for the active pet (F09).
+    /// Returns nil only when there is no pet yet — the passport is about one
+    /// puppy's real experiences, so there is nothing honest to show without
+    /// one.
+    func makeSocializationStore() -> SocializationStore? {
+        guard let activePet else { return nil }
+        return SocializationStore(
+            service: socialization ?? InMemorySocializationService(),
+            petId: activePet.id,
+            petName: activePet.name,
+            calendar: household?.clock.calendar ?? .current
+        )
     }
 
     func replayOfflineOperations() async {

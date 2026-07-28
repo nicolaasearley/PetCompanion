@@ -15,7 +15,11 @@ export type WritePathCommand =
   | "accept_recommendation"
   | "complete_occurrence"
   | "undo_completion"
-  | "skip_item";
+  | "skip_item"
+  | "create_invitation"
+  | "revoke_invitation"
+  | "accept_invitation"
+  | "decline_invitation";
 
 export interface CommandEnvelope<TPayload = unknown> {
   command: WritePathCommand;
@@ -199,6 +203,51 @@ export interface SkipItemPayload {
   skip_reason?: SkipReason;
   confirm_required?: boolean;
   note?: string;
+}
+
+/** ST-05. Owner-only; the share token is generated server-side. */
+export interface CreateInvitationPayload {
+  household_id: string;
+  /** Client-supplied identity so a retry cannot create a second invitation. */
+  invitation_id?: string;
+  /** 1–336 hours; defaults to 168 (7 days). */
+  expires_in_hours?: number;
+  /** `caregiver` is the only role grantable in MVP (DM 10 §7.4). */
+  role_granted?: "caregiver";
+}
+
+/**
+ * The plaintext `token` appears ONLY here, in the live create response. It is
+ * not stored in `command_log`, so an idempotent replay returns the same
+ * invitation with `token` absent and `token_returned_once` set.
+ */
+export interface CreateInvitationResult {
+  invitation: {
+    id: string;
+    household_id: string;
+    household_name: string;
+    created_by: string;
+    role_granted: "caregiver";
+    status: "pending";
+    expires_at: string;
+  };
+  token_returned_once: true;
+  token?: string;
+}
+
+/** ST-04/ST-05. Owner-only. */
+export interface RevokeInvitationPayload {
+  invitation_id: string;
+}
+
+/** ON-05. The token is the invitation's only credential. */
+export interface AcceptInvitationPayload {
+  token: string;
+}
+
+/** ON-05. Declining exposes nothing about the household (US-012). */
+export interface DeclineInvitationPayload {
+  token: string;
 }
 
 export interface CommandSuccess<T = unknown> {

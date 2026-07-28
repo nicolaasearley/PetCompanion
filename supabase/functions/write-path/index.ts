@@ -1,4 +1,5 @@
 import type {
+  AcceptInvitationPayload,
   AcceptRecommendationPayload,
   ArchiveSchedulePayload,
   CancelOccurrencePayload,
@@ -7,13 +8,16 @@ import type {
   CommandSuccess,
   CompleteOccurrencePayload,
   CreateHouseholdPayload,
+  CreateInvitationPayload,
   CreatePetPayload,
   CreateRecurringTaskPayload,
   CreateTaskPayload,
+  DeclineInvitationPayload,
   EditOccurrencePayload,
   EditScheduleFuturePayload,
   RecurrenceRulePayload,
   RescheduleOccurrencePayload,
+  RevokeInvitationPayload,
   SetDefaultCapacityPayload,
   SetRoutinePreferencesPayload,
   SkipItemPayload,
@@ -54,6 +58,10 @@ const implementedCommands: ReadonlySet<WritePathCommand> = new Set([
   "complete_occurrence",
   "undo_completion",
   "skip_item",
+  "create_invitation",
+  "revoke_invitation",
+  "accept_invitation",
+  "decline_invitation",
 ]);
 
 Deno.serve(async (request) => {
@@ -141,6 +149,15 @@ Deno.serve(async (request) => {
       assertCompleteOccurrencePayload(envelope.payload);
     } else if (envelope.command === "undo_completion") {
       assertUndoCompletionPayload(envelope.payload);
+    } else if (envelope.command === "create_invitation") {
+      assertCreateInvitationPayload(envelope.payload);
+      await assertActiveMembership(user.id, envelope.payload.household_id);
+    } else if (envelope.command === "revoke_invitation") {
+      assertRevokeInvitationPayload(envelope.payload);
+    } else if (envelope.command === "accept_invitation") {
+      assertAcceptInvitationPayload(envelope.payload);
+    } else if (envelope.command === "decline_invitation") {
+      assertDeclineInvitationPayload(envelope.payload);
     } else {
       assertSkipItemPayload(envelope.payload);
     }
@@ -149,7 +166,7 @@ Deno.serve(async (request) => {
       actor_id: user.id,
       idempotency_key: envelope.client_idempotency_key,
       payload_hash_input: payloadHash,
-      request_body_input: envelope as unknown as Json,
+      request_body_input: envelopeForStorage(envelope) as unknown as Json,
       recorded_at_input: envelope.recorded_at,
       effective_at_input: envelope.effective_at ?? null,
       payload_input: envelope.payload as unknown as Json,
@@ -409,6 +426,44 @@ function assertAcceptRecommendationPayload(value: unknown): asserts value is Acc
   }
 }
 
+function assertCreateInvitationPayload(value: unknown): asserts value is CreateInvitationPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.household_id, "payload.household_id");
+  if (value.invitation_id !== undefined) assertNonEmptyString(value.invitation_id, "payload.invitation_id");
+  if (value.expires_in_hours !== undefined) {
+    if (
+      typeof value.expires_in_hours !== "number" || !Number.isInteger(value.expires_in_hours)
+      || value.expires_in_hours < 1 || value.expires_in_hours > 336
+    ) {
+      throw new Error("payload.expires_in_hours must be a whole number of hours between 1 and 336.");
+    }
+  }
+  if (value.role_granted !== undefined && value.role_granted !== "caregiver") {
+    throw new Error("payload.role_granted must be caregiver in MVP.");
+  }
+}
+
+function assertRevokeInvitationPayload(value: unknown): asserts value is RevokeInvitationPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.invitation_id, "payload.invitation_id");
+}
+
+function assertAcceptInvitationPayload(value: unknown): asserts value is AcceptInvitationPayload {
+  assertInvitationTokenPayload(value);
+}
+
+function assertDeclineInvitationPayload(value: unknown): asserts value is DeclineInvitationPayload {
+  assertInvitationTokenPayload(value);
+}
+
+function assertInvitationTokenPayload(value: unknown): asserts value is { token: string } {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.token, "payload.token");
+  // Bound the token before it is hashed so an oversized body cannot be used
+  // as a cheap CPU sink; the server issues exactly 64 hex characters.
+  if (value.token.trim().length > 256) throw new Error("payload.token is not a valid invitation token.");
+}
+
 const taskCategories = [
   "health", "feeding", "routine", "training", "socialization",
   "grooming", "event", "preparation", "life", "household",
@@ -559,13 +614,26 @@ async function findReplay(actorUserId: string, key: string): Promise<null | { co
   return rows[0] ?? null;
 }
 
+/**
+ * `command_log.request_body` is durable and support-readable, so a live
+ * invitation token must never reach it (DM 10 §7.4/§17). The payload hash is
+ * computed from the ORIGINAL payload, so redaction here does not affect
+ * idempotency matching.
+ */
+function envelopeForStorage(envelope: CommandEnvelope): CommandEnvelope {
+  if (isRecord(envelope.payload) && typeof envelope.payload.token === "string") {
+    return { ...envelope, payload: { ...envelope.payload, token: "[redacted]" } };
+  }
+  return envelope;
+}
+
 async function recordCommandFailure(actorUserId: string, envelope: CommandEnvelope, payloadHash: string, errorCode: string): Promise<void> {
   await restPost("command_log", {
     actor_user_id: actorUserId,
     client_idempotency_key: envelope.client_idempotency_key,
     command: envelope.command,
     payload_hash: payloadHash,
-    request_body: envelope,
+    request_body: envelopeForStorage(envelope),
     response_body: { ok: false, code: errorCode },
     status: "failed",
     error_code: errorCode,
@@ -691,6 +759,14 @@ function codeOf(error: unknown): string {
     if (error.code === "42501") return "FORBIDDEN";
     if (error.code === "23505") return "IDEMPOTENCY_CONFLICT";
     if (error.code === "PC001") return "REQUIRED_CONFIRMATION";
+    // Invitation outcomes are distinct codes on purpose: ON-05 must explain
+    // exactly why a link cannot be used (US-012), never a generic failure.
+    if (error.code === "PC010") return "INVITATION_NOT_FOUND";
+    if (error.code === "PC011") return "INVITATION_EXPIRED";
+    if (error.code === "PC012") return "INVITATION_ALREADY_RESOLVED";
+    if (error.code === "PC013") return "ALREADY_A_MEMBER";
+    if (error.code === "PC014") return "HOUSEHOLD_CLOSED";
+    if (error.code === "PC015") return "SINGLE_HOUSEHOLD_LIMIT";
     if (error.code === "40001") return "REVISION_CONFLICT";
     if (error.code === "22023" || error.code === "23514" || error.code === "22P02") return "VALIDATION_FAILED";
     return error.code;
@@ -708,7 +784,15 @@ function statusForError(code: string | null | undefined): number {
       return 403;
     case "IDEMPOTENCY_CONFLICT":
     case "REVISION_CONFLICT":
+    case "INVITATION_ALREADY_RESOLVED":
+    case "ALREADY_A_MEMBER":
+    case "HOUSEHOLD_CLOSED":
+    case "SINGLE_HOUSEHOLD_LIMIT":
       return 409;
+    case "INVITATION_NOT_FOUND":
+      return 404;
+    case "INVITATION_EXPIRED":
+      return 410;
     case "VALIDATION_FAILED":
     case "REQUIRED_CONFIRMATION":
     case "BAD_REQUEST":

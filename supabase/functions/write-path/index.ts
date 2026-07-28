@@ -15,12 +15,16 @@ import type {
   DeclineInvitationPayload,
   EditOccurrencePayload,
   EditScheduleFuturePayload,
+  LogTrainingSessionPayload,
   RecurrenceRulePayload,
   RescheduleOccurrencePayload,
   RevokeInvitationPayload,
   SetDefaultCapacityPayload,
   SetRoutinePreferencesPayload,
   SkipItemPayload,
+  StartTrainingGoalPayload,
+  TrainingGoalRef,
+  UpdateTrainingProgressPayload,
   WritePathCommand,
   SnoozeOccurrencePayload,
   UndoSkipPayload,
@@ -62,6 +66,12 @@ const implementedCommands: ReadonlySet<WritePathCommand> = new Set([
   "revoke_invitation",
   "accept_invitation",
   "decline_invitation",
+  "start_training_goal",
+  "pause_training_goal",
+  "resume_training_goal",
+  "retire_training_goal",
+  "update_training_progress",
+  "log_training_session",
 ]);
 
 Deno.serve(async (request) => {
@@ -158,6 +168,18 @@ Deno.serve(async (request) => {
       assertAcceptInvitationPayload(envelope.payload);
     } else if (envelope.command === "decline_invitation") {
       assertDeclineInvitationPayload(envelope.payload);
+    } else if (envelope.command === "start_training_goal") {
+      assertStartTrainingGoalPayload(envelope.payload);
+    } else if (
+      envelope.command === "pause_training_goal"
+      || envelope.command === "resume_training_goal"
+      || envelope.command === "retire_training_goal"
+    ) {
+      assertTrainingGoalRefPayload(envelope.payload);
+    } else if (envelope.command === "update_training_progress") {
+      assertUpdateTrainingProgressPayload(envelope.payload);
+    } else if (envelope.command === "log_training_session") {
+      assertLogTrainingSessionPayload(envelope.payload);
     } else {
       assertSkipItemPayload(envelope.payload);
     }
@@ -462,6 +484,101 @@ function assertInvitationTokenPayload(value: unknown): asserts value is { token:
   // Bound the token before it is hashed so an oversized body cannot be used
   // as a cheap CPU sink; the server issues exactly 64 hex characters.
   if (value.token.trim().length > 256) throw new Error("payload.token is not a valid invitation token.");
+}
+
+// ---------------------------------------------------------------------------
+// Training goals and sessions (F08, epic E06)
+// ---------------------------------------------------------------------------
+
+/**
+ * `paused` is deliberately absent. F08's seventh state is a goal STATUS, and
+ * accepting it here would let a client erase the substantive progress the
+ * household reported (US-064). The database refuses it too.
+ */
+const trainingProgressStates = [
+  "not_started",
+  "introduced",
+  "practicing",
+  "reliable_in_familiar_setting",
+  "generalizing",
+  "maintained",
+];
+
+function assertStartTrainingGoalPayload(value: unknown): asserts value is StartTrainingGoalPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.pet_id, "payload.pet_id");
+  assertNonEmptyString(value.skill_ref, "payload.skill_ref");
+  if (!/^skill\.[a-z0-9_]+$/.test(value.skill_ref)) {
+    throw new Error("payload.skill_ref must be a catalogue skill id.");
+  }
+}
+
+/**
+ * A goal is addressed either by its id or by the (pet, skill) pair the lesson
+ * screen already holds. Requiring one of the two here means the database never
+ * has to guess which goal an ambiguous payload meant.
+ */
+function assertTrainingGoalRefPayload(value: unknown): asserts value is TrainingGoalRef {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  const hasGoalId = typeof value.goal_id === "string" && value.goal_id.trim() !== "";
+  const hasPair = typeof value.pet_id === "string" && value.pet_id.trim() !== ""
+    && typeof value.skill_ref === "string" && value.skill_ref.trim() !== "";
+  if (!hasGoalId && !hasPair) {
+    throw new Error("payload requires goal_id, or both pet_id and skill_ref.");
+  }
+  if (value.expected_revision !== undefined) assertExpectedRevision(value.expected_revision);
+}
+
+function assertUpdateTrainingProgressPayload(value: unknown): asserts value is UpdateTrainingProgressPayload {
+  assertTrainingGoalRefPayload(value);
+  const payload = value as Record<string, unknown>;
+  if (payload.progress_state === "paused") {
+    throw new Error("Pausing is a goal status change, not a progress state.");
+  }
+  if (!trainingProgressStates.includes(String(payload.progress_state))) {
+    throw new Error("payload.progress_state is not one of the owner-reported states.");
+  }
+}
+
+function assertLogTrainingSessionPayload(value: unknown): asserts value is LogTrainingSessionPayload {
+  assertTrainingGoalRefPayload(value);
+  const payload = value as Record<string, unknown>;
+  if (payload.effective_date !== undefined) {
+    assertLocalDate(payload.effective_date, "payload.effective_date");
+    if (isFutureDate(String(payload.effective_date))) {
+      throw new Error("A training session cannot be logged in the future.");
+    }
+  }
+  if (payload.effective_time !== undefined) {
+    if (typeof payload.effective_time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(payload.effective_time)) {
+      throw new Error("payload.effective_time must be HH:MM.");
+    }
+  }
+  if (payload.duration_minutes !== undefined) {
+    if (
+      typeof payload.duration_minutes !== "number" || !Number.isInteger(payload.duration_minutes)
+      || payload.duration_minutes < 1 || payload.duration_minutes > 600
+    ) {
+      throw new Error("payload.duration_minutes must be a whole number of minutes between 1 and 600.");
+    }
+  }
+  if (payload.outcome_note !== undefined && typeof payload.outcome_note !== "string") {
+    throw new Error("payload.outcome_note must be a string.");
+  }
+  // Absent means "the household said nothing about progress", which must stay
+  // distinguishable from a reconfirmation: a session never advances mastery on
+  // its own (US-063).
+  if (payload.progress_state_after !== undefined) {
+    if (payload.progress_state_after === "paused") {
+      throw new Error("Pausing is a goal status change, not a progress state.");
+    }
+    if (!trainingProgressStates.includes(String(payload.progress_state_after))) {
+      throw new Error("payload.progress_state_after is not one of the owner-reported states.");
+    }
+  }
+  if (payload.media_refs !== undefined && !Array.isArray(payload.media_refs)) {
+    throw new Error("payload.media_refs must be an array.");
+  }
 }
 
 const taskCategories = [

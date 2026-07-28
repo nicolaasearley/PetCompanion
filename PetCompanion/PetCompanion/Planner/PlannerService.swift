@@ -22,13 +22,11 @@ protocol PlannerService: AnyObject {
 @MainActor
 final class PlanServicePlannerAdapter: PlannerService {
     private let model: AppModel
-    private weak var sharedHomeViewModel: HomeViewModel?
     private var snapshotsByDay: [Date: PlanSnapshot] = [:]
     private var memberNames: [UUID: String] = [:]
 
-    init(model: AppModel, sharedHomeViewModel: HomeViewModel?) {
+    init(model: AppModel) {
         self.model = model
-        self.sharedHomeViewModel = sharedHomeViewModel
     }
 
     func context() async throws -> PlannerContext {
@@ -74,9 +72,7 @@ final class PlanServicePlannerAdapter: PlannerService {
             )
         }
         snapshotsByDay[calendar.startOfDay(for: date)] = snapshot
-        if calendar.isDateInToday(date) {
-            sharedHomeViewModel?.snapshot = snapshot
-        }
+        publishToSharedPlan(snapshot, for: date, calendar: calendar)
 
         let namesByPet = Dictionary(uniqueKeysWithValues: [pet].map { ($0.id, $0.name) })
         let items = snapshot.items.compactMap { planItem -> PlannerAgendaItem? in
@@ -141,9 +137,9 @@ final class PlanServicePlannerAdapter: PlannerService {
             petId: petId,
             on: draft.date
         )
-        sharedHomeViewModel?.snapshot = snapshot
         let calendar = model.household?.clock.calendar ?? .current
         snapshotsByDay[calendar.startOfDay(for: draft.date)] = snapshot
+        publishToSharedPlan(snapshot, for: draft.date, calendar: calendar)
         return .confirmed
     }
 
@@ -175,10 +171,22 @@ final class PlanServicePlannerAdapter: PlannerService {
                 "This action needs the Slice B Planner write adapter."
             )
         }
-        sharedHomeViewModel?.snapshot = snapshot
         let calendar = model.household?.clock.calendar ?? .current
         snapshotsByDay[calendar.startOfDay(for: item.date)] = snapshot
+        publishToSharedPlan(snapshot, for: item.date, calendar: calendar)
         return .confirmed
+    }
+
+    /// Home renders today for the active pet, so only today's snapshot may
+    /// replace the shared one — otherwise browsing Planner backwards would
+    /// quietly rewrite Home with another day's plan.
+    private func publishToSharedPlan(
+        _ snapshot: PlanSnapshot,
+        for date: Date,
+        calendar: Calendar
+    ) {
+        guard calendar.isDateInToday(date) else { return }
+        model.planState.snapshot = snapshot
     }
 
     private func map(

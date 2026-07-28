@@ -9,7 +9,14 @@ import UIKit
 final class HomeViewModel {
     private let model: AppModel
 
-    var snapshot: PlanSnapshot?
+    /// Home does not own the plan. Planner acts on the same day's work, so
+    /// the snapshot lives in shared app state and both surfaces observe the
+    /// one value (doc 19).
+    var snapshot: PlanSnapshot? {
+        get { model.planState.snapshot }
+        set { model.planState.snapshot = newValue }
+    }
+
     var isLoading = false
     var errorMessage: String?
     /// Items currently playing the completing animation.
@@ -117,6 +124,14 @@ final class HomeViewModel {
 
     func clearError() {
         errorMessage = nil
+    }
+
+    /// Opens the detail for an item a caller has already resolved against the
+    /// current plan (a tapped reminder, IA §10). The sheet shows whatever the
+    /// plan says now — completed included — rather than what the reminder
+    /// assumed when it was scheduled.
+    func openDetail(itemId: UUID) {
+        detailItem = snapshot?.items.first { $0.id == itemId }
     }
 
     private func loadMembers() async {

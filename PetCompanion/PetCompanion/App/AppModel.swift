@@ -41,6 +41,10 @@ final class AppModel {
     /// Local-only reminder coordinator. Permission is requested only by an
     /// explicit settings action through this protocol.
     private(set) var notifications: any LocalNotificationServicing
+    /// The Daily Plan Home and Planner both render. Whoever confirms a change
+    /// publishes it here so the other surface is never left showing
+    /// pre-action state (doc 19).
+    let planState = SharedPlanState()
 
     var phase: Phase = .onboarding
     var currentUser: UserAccount?
@@ -51,6 +55,14 @@ final class AppModel {
     /// Where an authenticated caregiver should resume when setup was
     /// interrupted. `OnboardingFlowView` consumes this once on appearance.
     private(set) var pendingOnboardingDestination: PostAuthDestination?
+    /// A tapped reminder that has already been resolved against current
+    /// state. `MainTabView` consumes it once; nothing is ever presented
+    /// before resolution (doc 20 §4.10).
+    var pendingDeepLink: ResolvedDeepLink?
+    /// A reminder tapped before the caregiver reached the main tabs. Deep
+    /// links are auth-gated (IA §10), so the target waits rather than
+    /// resolving against a session that does not exist yet.
+    private var deferredDeepLink: AppDeepLinkTarget?
 
     init(
         auth: any AuthService,
@@ -171,6 +183,7 @@ final class AppModel {
                 currentUser = nil
                 household = nil
                 activePet = nil
+                planState.clear()
                 pendingOnboardingDestination = nil
                 backendMessage = "Your previous session expired. Sign in again to continue."
                 backendMode = resolvedMode
@@ -214,6 +227,7 @@ final class AppModel {
             if let pet = try await households.pets(householdId: existing.id).first {
                 activePet = pet
                 phase = .main
+                resolveDeferredDeepLink()
                 return .main
             }
             pendingOnboardingDestination = .addPet
@@ -232,6 +246,7 @@ final class AppModel {
     /// plan (doc 14 §4 "Onboarding exit").
     func finishOnboarding() {
         phase = .main
+        resolveDeferredDeepLink()
     }
 
     func signOut() {
@@ -241,8 +256,75 @@ final class AppModel {
         currentUser = nil
         household = nil
         activePet = nil
+        planState.clear()
         pendingOnboardingDestination = nil
+        pendingDeepLink = nil
+        deferredDeepLink = nil
         phase = .onboarding
+    }
+
+    // MARK: - Notification deep links
+
+    /// Resolves a tapped reminder before anything is presented (doc 20
+    /// §4.10). The notification carries no authority of its own: the
+    /// destination is decided by what the plan says right now, and a target
+    /// that is gone or unreadable degrades to a truthful surface rather than
+    /// to a stale card (IA §10).
+    func open(_ target: AppDeepLinkTarget) async {
+        guard phase == .main else {
+            deferredDeepLink = target
+            return
+        }
+        guard target.destination == .planItem else {
+            pendingDeepLink = NotificationDeepLinkResolver.resolve(target, against: nil)
+            return
+        }
+        guard let petId = target.petId ?? activePet?.id else {
+            pendingDeepLink = .unavailable(.targetNoLongerInPlan)
+            return
+        }
+        if petId != activePet?.id {
+            guard let household,
+                  let pets = try? await households.pets(householdId: household.id)
+            else {
+                pendingDeepLink = .unavailable(.planUnavailable)
+                return
+            }
+            guard let pet = pets.first(where: { $0.id == petId }) else {
+                pendingDeepLink = .unavailable(.targetNoLongerInPlan)
+                return
+            }
+            // The destination sets the active pet context (IA §10).
+            activePet = pet
+        }
+
+        let snapshot: PlanSnapshot
+        do {
+            snapshot = try await plans.plan(
+                forPet: petId,
+                on: target.localDate ?? Date(),
+                resectioningCompleted: false
+            )
+        } catch PlanServiceError.notSignedIn {
+            pendingDeepLink = .unavailable(.noAccess)
+            return
+        } catch {
+            pendingDeepLink = .unavailable(.planUnavailable)
+            return
+        }
+
+        // The read that resolved the link is also the freshest plan the app
+        // has; publishing it saves Home a second round trip on arrival.
+        if snapshot.servedFromCacheAt == nil {
+            planState.snapshot = snapshot
+        }
+        pendingDeepLink = NotificationDeepLinkResolver.resolve(target, against: snapshot)
+    }
+
+    private func resolveDeferredDeepLink() {
+        guard phase == .main, let target = deferredDeepLink else { return }
+        deferredDeepLink = nil
+        Task { await open(target) }
     }
 
     func replayOfflineOperations() async {

@@ -1,6 +1,55 @@
 import Foundation
 import Supabase
 
+/// Planner's optimistic state for work the local queue has accepted but the
+/// server has not confirmed.
+///
+/// Every entry is owned by exactly one queued operation. When that operation
+/// leaves the queue — replayed, so the real row now arrives from the server,
+/// or set aside as rejected, so it never will — the placeholder row or queued
+/// badge it justified has to go with it. Left behind, a placeholder outlives
+/// the row that replaced it and Planner shows the same task twice.
+struct QueuedPlannerWork: Equatable {
+    /// Synthesised agenda rows for creates that have no server row yet, keyed
+    /// by the operation that will produce one.
+    private(set) var placeholders: [UUID: PlannerAgendaItem] = [:]
+    /// Occurrences currently showing a queued badge, mapped to the operation
+    /// that still owes them a confirmation.
+    private(set) var badgedOccurrences: [UUID: UUID] = [:]
+
+    mutating func addPlaceholder(_ item: PlannerAgendaItem, operationId: UUID) {
+        placeholders[operationId] = item
+    }
+
+    mutating func badge(occurrenceId: UUID, operationId: UUID) {
+        badgedOccurrences[occurrenceId] = operationId
+    }
+
+    mutating func clearBadge(occurrenceId: UUID) {
+        badgedOccurrences.removeValue(forKey: occurrenceId)
+    }
+
+    func isBadged(occurrenceId: UUID) -> Bool {
+        badgedOccurrences[occurrenceId] != nil
+    }
+
+    func placeholderItems(on date: Date, calendar: Calendar) -> [PlannerAgendaItem] {
+        placeholders.values.filter { calendar.isDate($0.date, inSameDayAs: date) }
+    }
+
+    /// Releases everything whose operation the queue no longer holds as
+    /// outstanding work. Rejected operations are released too: they are
+    /// retained for review in Settings, not as an agenda row that pretends
+    /// the task exists.
+    mutating func settle(against operations: [OfflineOperation]) {
+        let outstanding = Set(
+            operations.filter { $0.state != .rejected }.map(\.id)
+        )
+        placeholders = placeholders.filter { outstanding.contains($0.key) }
+        badgedOccurrences = badgedOccurrences.filter { outstanding.contains($0.value) }
+    }
+}
+
 /// Supabase-backed Planner adapter for Slice B. Reads use RLS-protected
 /// tables; every invariant-bearing mutation goes through `write-path`.
 @MainActor
@@ -13,8 +62,7 @@ final class RealPlannerService: PlannerService {
     private var memberNames: [UUID: String] = [:]
     private var scheduleRevisions: [UUID: Int] = [:]
     private var knownItems: [UUID: PlannerAgendaItem] = [:]
-    private var queuedOccurrenceIds: Set<UUID> = []
-    private var queuedDrafts: [UUID: PlannerAgendaItem] = [:]
+    private var queuedWork = QueuedPlannerWork()
 
     init(
         client: SupabaseClient,
@@ -56,6 +104,8 @@ final class RealPlannerService: PlannerService {
         guard let household = model.household else {
             throw PlannerServiceError.unavailable("Your household could not be loaded.")
         }
+        // Optimistic rows and badges only survive while their operation does.
+        queuedWork.settle(against: operationQueue.operations)
         let calendar = household.clock.calendar
         let dateString = SupabaseCoding.dateOnlyString(date, timeZone: calendar.timeZone)
 
@@ -95,9 +145,7 @@ final class RealPlannerService: PlannerService {
                 calendar: calendar
             )
         }
-        items.append(contentsOf: queuedDrafts.values.filter {
-            calendar.isDate($0.date, inSameDayAs: date)
-        })
+        items.append(contentsOf: queuedWork.placeholderItems(on: date, calendar: calendar))
         items.sort(by: agendaSort)
         knownItems.merge(Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })) {
             _, newest in newest
@@ -142,12 +190,21 @@ final class RealPlannerService: PlannerService {
         }
 
         if !draft.isEditing {
-            let result = try await create(draft, petId: petId, calendar: household.clock.calendar)
-            if result == .queued {
-                let id = UUID()
-                queuedDrafts[id] = queuedItem(id: id, draft: draft)
+            let outcome = try await create(draft, petId: petId, calendar: household.clock.calendar)
+            if case .queued(let operationId) = outcome {
+                queuedWork.addPlaceholder(
+                    queuedItem(id: UUID(), draft: draft),
+                    operationId: operationId
+                )
             }
-            return result
+            let state = outcome.mutationState
+            await refreshSharedPlan(
+                after: state,
+                petId: petId,
+                on: draft.date,
+                regeneratingPlan: true
+            )
+            return state
         }
 
         guard let occurrenceId = draft.occurrenceId,
@@ -157,22 +214,33 @@ final class RealPlannerService: PlannerService {
         if draft.isEditingRecurringTask, scope == nil {
             throw PlannerServiceError.unavailable("Choose which occurrences this change applies to.")
         }
+        let state: PlannerMutationState
         if scope == .thisAndFuture {
             guard let scheduleId = draft.scheduleId else {
                 throw PlannerServiceError.missingOccurrence
             }
-            return try await editFuture(
+            state = try await editFuture(
                 draft,
                 scheduleId: scheduleId,
                 splitDate: original.date,
                 calendar: household.clock.calendar
             )
+        } else {
+            state = try await editOccurrence(
+                draft,
+                original: original,
+                calendar: household.clock.calendar
+            )
         }
-        return try await editOccurrence(
-            draft,
-            original: original,
-            calendar: household.clock.calendar
+        // An edit can move work onto or off today, so Home needs the plan
+        // regenerated rather than the same items re-read.
+        await refreshSharedPlan(
+            after: state,
+            petId: original.petId,
+            on: original.date,
+            regeneratingPlan: true
         )
+        return state
     }
 
     func perform(
@@ -183,21 +251,21 @@ final class RealPlannerService: PlannerService {
               let household = model.household
         else { throw PlannerServiceError.missingOccurrence }
         let calendar = household.clock.calendar
-        let state: PlannerMutationState
+        let outcome: SendOutcome
 
         switch action {
         case .complete:
-            state = try await send(
+            outcome = try await send(
                 command: "complete_occurrence",
                 payload: OccurrenceOnlyPayload(occurrence_id: occurrenceId)
             )
         case .undoComplete:
-            state = try await send(
+            outcome = try await send(
                 command: "undo_completion",
                 payload: OccurrenceOnlyPayload(occurrence_id: occurrenceId)
             )
         case .skip(let reason):
-            state = try await send(
+            outcome = try await send(
                 command: "skip_item",
                 payload: SkipPayload(
                     occurrence_id: occurrenceId,
@@ -206,7 +274,7 @@ final class RealPlannerService: PlannerService {
                 )
             )
         case .undoSkip:
-            state = try await send(
+            outcome = try await send(
                 command: "undo_skip",
                 payload: OccurrenceOnlyPayload(occurrence_id: occurrenceId)
             )
@@ -214,7 +282,7 @@ final class RealPlannerService: PlannerService {
             guard calendar.isDate(until, inSameDayAs: item.date), until > .now else {
                 throw PlannerServiceError.invalidSnooze
             }
-            state = try await send(
+            outcome = try await send(
                 command: "snooze_occurrence",
                 payload: SnoozePayload(
                     occurrence_id: occurrenceId,
@@ -229,7 +297,7 @@ final class RealPlannerService: PlannerService {
                     time: time,
                     calendar: calendar
                 )
-                state = try await send(
+                outcome = try await send(
                     command: "edit_schedule_future",
                     payload: EditFuturePayload(
                         schedule_id: scheduleId,
@@ -242,7 +310,7 @@ final class RealPlannerService: PlannerService {
                     )
                 )
             } else {
-                state = try await send(
+                outcome = try await send(
                     command: "reschedule_occurrence",
                     payload: ReschedulePayload(
                         occurrence_id: occurrenceId,
@@ -254,7 +322,7 @@ final class RealPlannerService: PlannerService {
             }
         case .cancel(let scope):
             if scope == .thisAndFuture, let scheduleId = item.scheduleId {
-                state = try await send(
+                outcome = try await send(
                     command: "archive_schedule",
                     payload: ArchivePayload(
                         schedule_id: scheduleId,
@@ -263,7 +331,7 @@ final class RealPlannerService: PlannerService {
                     )
                 )
             } else {
-                state = try await send(
+                outcome = try await send(
                     command: "cancel_occurrence",
                     payload: CancelPayload(
                         occurrence_id: occurrenceId,
@@ -274,11 +342,18 @@ final class RealPlannerService: PlannerService {
             }
         }
 
-        if state == .queued {
-            queuedOccurrenceIds.insert(occurrenceId)
+        if case .queued(let operationId) = outcome {
+            queuedWork.badge(occurrenceId: occurrenceId, operationId: operationId)
         } else {
-            queuedOccurrenceIds.remove(occurrenceId)
+            queuedWork.clearBadge(occurrenceId: occurrenceId)
         }
+        let state = outcome.mutationState
+        await refreshSharedPlan(
+            after: state,
+            petId: item.petId,
+            on: item.date,
+            regeneratingPlan: Self.changesDayComposition(action)
+        )
         return state
     }
 
@@ -288,7 +363,7 @@ final class RealPlannerService: PlannerService {
         _ draft: PlannerTaskDraft,
         petId: UUID,
         calendar: Calendar
-    ) async throws -> PlannerMutationState {
+    ) async throws -> SendOutcome {
         let payload = CreatePayload(
             pet_id: petId,
             title: draft.title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -316,8 +391,11 @@ final class RealPlannerService: PlannerService {
         }
         var revision = draft.revision ?? original.revision
         var result = PlannerMutationState.confirmed
+        // An edit can send two commands; the badge belongs to whichever one
+        // the queue is still holding.
+        var queuedOperationId: UUID?
         if !calendar.isDate(draft.date, inSameDayAs: original.date) {
-            result = try await send(
+            let outcome = try await send(
                 command: "reschedule_occurrence",
                 payload: ReschedulePayload(
                     occurrence_id: occurrenceId,
@@ -326,13 +404,15 @@ final class RealPlannerService: PlannerService {
                     timing: timingPayload(draft.time, calendar: calendar)
                 )
             )
+            if case .queued(let operationId) = outcome { queuedOperationId = operationId }
+            result = outcome.mutationState
             revision += 1
         }
         let needsDetails = draft.title != original.title
             || draft.assignment != original.assignment
             || draft.time != original.time
         if needsDetails {
-            let detailResult = try await send(
+            let outcome = try await send(
                 command: "edit_occurrence",
                 payload: EditOccurrencePayload(
                     occurrence_id: occurrenceId,
@@ -342,9 +422,16 @@ final class RealPlannerService: PlannerService {
                     assignment: assignmentPayload(draft.assignment)
                 )
             )
-            if detailResult == .queued { result = .queued }
+            if case .queued(let operationId) = outcome {
+                queuedOperationId = operationId
+                result = .queued
+            }
         }
-        if result == .queued { queuedOccurrenceIds.insert(occurrenceId) }
+        if let queuedOperationId {
+            queuedWork.badge(occurrenceId: occurrenceId, operationId: queuedOperationId)
+        } else {
+            queuedWork.clearBadge(occurrenceId: occurrenceId)
+        }
         return result
     }
 
@@ -354,7 +441,7 @@ final class RealPlannerService: PlannerService {
         splitDate: Date,
         calendar: Calendar
     ) async throws -> PlannerMutationState {
-        let result = try await send(
+        let outcome = try await send(
             command: "edit_schedule_future",
             payload: EditFuturePayload(
                 schedule_id: scheduleId,
@@ -371,16 +458,35 @@ final class RealPlannerService: PlannerService {
                 reminder_config: reminderPayload(draft.reminder)
             )
         )
-        if result == .queued, let occurrenceId = draft.occurrenceId {
-            queuedOccurrenceIds.insert(occurrenceId)
+        if let occurrenceId = draft.occurrenceId {
+            if case .queued(let operationId) = outcome {
+                queuedWork.badge(occurrenceId: occurrenceId, operationId: operationId)
+            } else {
+                queuedWork.clearBadge(occurrenceId: occurrenceId)
+            }
         }
-        return result
+        return outcome.mutationState
+    }
+
+    /// The queued case carries its operation id so optimistic Planner state
+    /// can be tied to — and later released by — the exact operation the queue
+    /// is holding.
+    private enum SendOutcome {
+        case confirmed
+        case queued(operationId: UUID)
+
+        var mutationState: PlannerMutationState {
+            switch self {
+            case .confirmed: .confirmed
+            case .queued: .queued
+            }
+        }
     }
 
     private func send<Payload: Encodable>(
         command: String,
         payload: Payload
-    ) async throws -> PlannerMutationState {
+    ) async throws -> SendOutcome {
         do {
             let _: JSONValue = try await WritePath.sendStable(
                 client: client,
@@ -389,11 +495,72 @@ final class RealPlannerService: PlannerService {
                 queue: operationQueue
             )
             return .confirmed
-        } catch OfflineMutationError.queued {
-            return .queued
+        } catch OfflineMutationError.queued(let operationId) {
+            return .queued(operationId: operationId)
         } catch WritePathError.server(let code, _) where code == "REVISION_CONFLICT" {
             throw PlannerServiceError.itemChanged
         }
+    }
+
+    // MARK: - Shared plan state
+
+    /// Home renders the same household day from the same rows, so a change
+    /// Planner confirmed has to leave the shared plan consistent. Without
+    /// this, completing a task in Planner leaves Home showing pre-action
+    /// state until Home happens to refetch (doc 19).
+    ///
+    /// Queued work is deliberately excluded: the server has nothing new to
+    /// tell Home yet, and re-reading would only overwrite the shared plan
+    /// with the state the caregiver just acted against.
+    static func sharedPlanNeedsRefresh(
+        after state: PlannerMutationState,
+        petId: UUID,
+        date: Date,
+        activePetId: UUID?,
+        calendar: Calendar,
+        today: Date
+    ) -> Bool {
+        state == .confirmed
+            && petId == activePetId
+            && calendar.isDate(date, inSameDayAs: today)
+    }
+
+    /// Complete/undo/skip/snooze only change an occurrence's state, which a
+    /// plain read already reflects. Rescheduling and cancelling change which
+    /// items belong to the day, and a read cannot show that honestly — those
+    /// need the plan regenerated.
+    private static func changesDayComposition(_ action: PlannerTaskAction) -> Bool {
+        switch action {
+        case .reschedule, .cancel: true
+        case .complete, .undoComplete, .skip, .undoSkip, .snooze: false
+        }
+    }
+
+    private func refreshSharedPlan(
+        after state: PlannerMutationState,
+        petId: UUID,
+        on date: Date,
+        regeneratingPlan: Bool
+    ) async {
+        guard let household = model.household,
+              model.planState.snapshot != nil,
+              Self.sharedPlanNeedsRefresh(
+                after: state,
+                petId: petId,
+                date: date,
+                activePetId: model.activePet?.id,
+                calendar: household.clock.calendar,
+                today: .now
+              )
+        else { return }
+        // A failed refresh leaves the previous shared plan in place rather
+        // than blanking Home: the change was confirmed, the re-read was not.
+        guard let refreshed = try? await model.plans.plan(
+            forPet: petId,
+            on: date,
+            resectioningCompleted: regeneratingPlan
+        ) else { return }
+        model.planState.snapshot = refreshed
     }
 
     // MARK: - Reads
@@ -441,7 +608,7 @@ final class RealPlannerService: PlannerService {
         calendar: Calendar
     ) -> PlannerAgendaItem {
         let state: PlannerAgendaState
-        if queuedOccurrenceIds.contains(row.id) {
+        if queuedWork.isBadged(occurrenceId: row.id) {
             state = .queued
         } else {
             state = switch row.state {

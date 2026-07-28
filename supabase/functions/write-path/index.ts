@@ -3,6 +3,7 @@ import type {
   AcceptRecommendationPayload,
   ArchiveSchedulePayload,
   CancelOccurrencePayload,
+  ClearSocializationExclusionPayload,
   CommandEnvelope,
   CommandFailure,
   CommandSuccess,
@@ -15,11 +16,15 @@ import type {
   DeclineInvitationPayload,
   EditOccurrencePayload,
   EditScheduleFuturePayload,
+  EditSocializationRecordPayload,
+  RecordSocializationPayload,
   RecurrenceRulePayload,
+  RemoveSocializationRecordPayload,
   RescheduleOccurrencePayload,
   RevokeInvitationPayload,
   SetDefaultCapacityPayload,
   SetRoutinePreferencesPayload,
+  SetSocializationExclusionPayload,
   SkipItemPayload,
   WritePathCommand,
   SnoozeOccurrencePayload,
@@ -62,6 +67,11 @@ const implementedCommands: ReadonlySet<WritePathCommand> = new Set([
   "revoke_invitation",
   "accept_invitation",
   "decline_invitation",
+  "record_socialization",
+  "edit_socialization_record",
+  "remove_socialization_record",
+  "set_socialization_exclusion",
+  "clear_socialization_exclusion",
 ]);
 
 Deno.serve(async (request) => {
@@ -158,6 +168,16 @@ Deno.serve(async (request) => {
       assertAcceptInvitationPayload(envelope.payload);
     } else if (envelope.command === "decline_invitation") {
       assertDeclineInvitationPayload(envelope.payload);
+    } else if (envelope.command === "record_socialization") {
+      assertRecordSocializationPayload(envelope.payload);
+    } else if (envelope.command === "edit_socialization_record") {
+      assertEditSocializationRecordPayload(envelope.payload);
+    } else if (envelope.command === "remove_socialization_record") {
+      assertRemoveSocializationRecordPayload(envelope.payload);
+    } else if (envelope.command === "set_socialization_exclusion") {
+      assertSetSocializationExclusionPayload(envelope.payload);
+    } else if (envelope.command === "clear_socialization_exclusion") {
+      assertClearSocializationExclusionPayload(envelope.payload);
     } else {
       assertSkipItemPayload(envelope.payload);
     }
@@ -462,6 +482,113 @@ function assertInvitationTokenPayload(value: unknown): asserts value is { token:
   // Bound the token before it is hashed so an oversized body cannot be used
   // as a cheap CPU sink; the server issues exactly 64 hex characters.
   if (value.token.trim().length > 256) throw new Error("payload.token is not a valid invitation token.");
+}
+
+// F09 socialization passport. The response vocabulary is closed here as well
+// as in the database: an unrecognized word must never reach a record, because
+// the product's whole position is that a response is owner-reported, not a
+// behavioural finding (catalogue §8).
+const socializationResponses = ["relaxed", "curious", "neutral", "hesitant", "fearful"];
+const socializationCategories = [
+  "People", "Animals", "Sounds", "Surfaces",
+  "Environments", "Handling", "Transportation", "Household objects",
+];
+const socializationExclusionReasons = ["unavailable", "unsuitable", "paused"];
+
+function assertSocializationResponse(value: unknown, field: string): asserts value is string {
+  if (typeof value !== "string" || !socializationResponses.includes(value)) {
+    throw new Error(`${field} must be one of ${socializationResponses.join(", ")}.`);
+  }
+}
+
+function assertSocializationMediaRefs(value: unknown, field: string): void {
+  if (value === undefined || value === null) return;
+  if (!Array.isArray(value)) throw new Error(`${field} must be an array.`);
+}
+
+function assertRecordSocializationPayload(value: unknown): asserts value is RecordSocializationPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.pet_id, "payload.pet_id");
+  if (value.record_id !== undefined) assertNonEmptyString(value.record_id, "payload.record_id");
+
+  const hasExperience = value.experience_content_id !== undefined;
+  const hasCustom = value.custom_label !== undefined;
+  if (hasExperience === hasCustom) {
+    throw new Error("payload must carry exactly one of experience_content_id or custom_label.");
+  }
+  if (hasExperience) {
+    assertNonEmptyString(value.experience_content_id, "payload.experience_content_id");
+  } else {
+    assertNonEmptyString(value.custom_label, "payload.custom_label");
+    // The category is only client-supplied for a custom experience; for a
+    // catalogue one the server takes it from the catalogue.
+    if (!socializationCategories.includes(String(value.category))) {
+      throw new Error("payload.category must be one of the eight socialization categories.");
+    }
+  }
+
+  if (value.effective_date !== undefined) assertLocalDate(value.effective_date, "payload.effective_date");
+  assertSocializationResponse(value.response, "payload.response");
+  assertSocializationMediaRefs(value.media_refs, "payload.media_refs");
+  for (const field of ["context", "note"] as const) {
+    if (value[field] !== undefined && typeof value[field] !== "string") {
+      throw new Error(`payload.${field} must be a string.`);
+    }
+  }
+}
+
+function assertEditSocializationRecordPayload(value: unknown): asserts value is EditSocializationRecordPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.record_id, "payload.record_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.effective_date !== undefined) assertLocalDate(value.effective_date, "payload.effective_date");
+  if (value.response !== undefined) assertSocializationResponse(value.response, "payload.response");
+  assertSocializationMediaRefs(value.media_refs, "payload.media_refs");
+  for (const field of ["context", "note"] as const) {
+    if (value[field] !== undefined && value[field] !== null && typeof value[field] !== "string") {
+      throw new Error(`payload.${field} must be a string or null.`);
+    }
+  }
+  // Re-pointing a record at a different experience or category is not an edit,
+  // it is a rewrite of what the household observed (US-067).
+  for (const field of ["experience_content_id", "custom_label", "category", "pet_id"] as const) {
+    if (value[field] !== undefined) {
+      throw new Error(`payload.${field} cannot be changed; remove the record and record it again.`);
+    }
+  }
+}
+
+function assertRemoveSocializationRecordPayload(value: unknown): asserts value is RemoveSocializationRecordPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.record_id, "payload.record_id");
+}
+
+function assertSetSocializationExclusionPayload(value: unknown): asserts value is SetSocializationExclusionPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.pet_id, "payload.pet_id");
+  if (value.exclusion_id !== undefined) assertNonEmptyString(value.exclusion_id, "payload.exclusion_id");
+
+  const hasCategory = value.category !== undefined;
+  const hasExperience = value.experience_content_id !== undefined;
+  if (hasCategory === hasExperience) {
+    throw new Error("payload must carry exactly one of category or experience_content_id.");
+  }
+  if (hasCategory && !socializationCategories.includes(String(value.category))) {
+    throw new Error("payload.category must be one of the eight socialization categories.");
+  }
+  if (hasExperience) assertNonEmptyString(value.experience_content_id, "payload.experience_content_id");
+
+  if (!socializationExclusionReasons.includes(String(value.reason))) {
+    throw new Error(`payload.reason must be one of ${socializationExclusionReasons.join(", ")}.`);
+  }
+  if (value.note !== undefined && typeof value.note !== "string") {
+    throw new Error("payload.note must be a string.");
+  }
+}
+
+function assertClearSocializationExclusionPayload(value: unknown): asserts value is ClearSocializationExclusionPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.exclusion_id, "payload.exclusion_id");
 }
 
 const taskCategories = [

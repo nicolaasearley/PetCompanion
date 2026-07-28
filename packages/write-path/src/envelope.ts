@@ -19,7 +19,12 @@ export type WritePathCommand =
   | "create_invitation"
   | "revoke_invitation"
   | "accept_invitation"
-  | "decline_invitation";
+  | "decline_invitation"
+  | "record_socialization"
+  | "edit_socialization_record"
+  | "remove_socialization_record"
+  | "set_socialization_exclusion"
+  | "clear_socialization_exclusion";
 
 export interface CommandEnvelope<TPayload = unknown> {
   command: WritePathCommand;
@@ -248,6 +253,92 @@ export interface AcceptInvitationPayload {
 /** ON-05. Declining exposes nothing about the household (US-012). */
 export interface DeclineInvitationPayload {
   token: string;
+}
+
+/**
+ * F09 socialization passport.
+ *
+ * The response vocabulary is closed and OWNER-REPORTED (catalogue §8). It is
+ * never a behavioural assessment: "hesitant" and "fearful" mean more distance
+ * and a softer version next time, not more repetitions, and the product must
+ * never render them as a finding about the puppy.
+ */
+export type SocializationResponse = "relaxed" | "curious" | "neutral" | "hesitant" | "fearful";
+
+/** The eight F09 categories (core features §14, catalogue §8). */
+export type SocializationCategory =
+  | "People"
+  | "Animals"
+  | "Sounds"
+  | "Surfaces"
+  | "Environments"
+  | "Handling"
+  | "Transportation"
+  | "Household objects";
+
+/** DM 10 §12.4. Every reason is reversible. */
+export type SocializationExclusionReason = "unavailable" | "unsuitable" | "paused";
+
+/**
+ * TR-08. Exactly one of `experience_content_id` (a catalogue experience) or
+ * `custom_label` (F09 "Add a custom experience"). For a catalogue experience
+ * the server takes the category from the catalogue and ignores any supplied
+ * `category`; a custom experience must name one itself.
+ */
+export interface RecordSocializationPayload {
+  pet_id: string;
+  /** Client-supplied identity so a retry cannot create a second record. */
+  record_id?: string;
+  experience_content_id?: string;
+  custom_label?: string;
+  category?: SocializationCategory;
+  /** Household-local date; defaults to today and may not be in the future. */
+  effective_date?: string;
+  context?: string;
+  response: SocializationResponse;
+  note?: string;
+  media_refs?: unknown[];
+}
+
+/**
+ * Corrects the observation, not its identity: an edit cannot re-point a record
+ * at a different experience or category, because that rewrites history rather
+ * than fixing it. Remove and re-record instead.
+ */
+export interface EditSocializationRecordPayload {
+  record_id: string;
+  /** Optimistic concurrency (DM §13); a stale write is rejected, not merged. */
+  expected_revision: number;
+  effective_date?: string;
+  context?: string | null;
+  response?: SocializationResponse;
+  note?: string | null;
+  media_refs?: unknown[] | null;
+}
+
+/** A recoverable tombstone, never a hard delete (DM §13). */
+export interface RemoveSocializationRecordPayload {
+  record_id: string;
+}
+
+/**
+ * US-068. Exactly one of `category` or `experience_content_id`. An active
+ * exclusion is a HARD eligibility constraint: the engine drops the whole
+ * category (or that one experience) rather than substituting a near-duplicate.
+ * Re-marking an already-excluded scope updates the live decision.
+ */
+export interface SetSocializationExclusionPayload {
+  pet_id: string;
+  exclusion_id?: string;
+  category?: SocializationCategory;
+  experience_content_id?: string;
+  reason: SocializationExclusionReason;
+  note?: string;
+}
+
+/** US-068 "The choice can be reversed" -- clearing keeps the row and its author. */
+export interface ClearSocializationExclusionPayload {
+  exclusion_id: string;
 }
 
 export interface CommandSuccess<T = unknown> {

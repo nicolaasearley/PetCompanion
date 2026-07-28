@@ -769,7 +769,9 @@ where public.is_active_household_member(hm.household_id);
 comment on view public.household_member_profiles is
   'Household members joined with the only user fields co-members may see (DM 10 §7.1): display_name and account status.';
 
-grant select on public.household_member_profiles to authenticated;
+-- Grants do not flow to objects created after `grant ... on all tables`, so
+-- both roles are named explicitly here (Slice A grants block).
+grant select on public.household_member_profiles to authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- Column-level hardening: token hashes never leave the server

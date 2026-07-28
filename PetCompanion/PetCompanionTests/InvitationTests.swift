@@ -100,7 +100,8 @@ final class InvitationTests: XCTestCase {
             ownerId: owner.id
         )
         let service = MockHouseholdService(backend: backend)
-        let token = try XCTUnwrap(try await service.createInvitation(householdId: household.id).token)
+        let created = try await service.createInvitation(householdId: household.id)
+        let token = try XCTUnwrap(created.token)
 
         let invitee = backend.signIn(email: "kim@example.com")
         try await service.declineInvitation(token: token)

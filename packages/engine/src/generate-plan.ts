@@ -23,6 +23,7 @@ import type {
 
 const DAY_MS = 86_400_000;
 const SUPPORTED_RULES = [
+  "rule.active_skill_practice",
   "rule.alone_time",
   "rule.brushing",
   "rule.handling_cadence",
@@ -608,7 +609,7 @@ function aloneTimeCandidate(
   const skill = catalogue.training_skills.find((row) => row.content_id === "skill.alone_time");
   if (!skill) return;
   const state = context.training_state.find((entry) => entry.skill_content_id === skill.content_id);
-  if (state?.status === "paused" || state?.status === "completed") return;
+  if (state?.status === "paused" || state?.status === "completed" || state?.status === "retired") return;
   if (state?.status !== "active") {
     if (!stage.stage_key) return;
     const position = stagePosition(stage.stage_key, catalogue.development_stages);
@@ -664,6 +665,116 @@ function brushingCandidate(
     { Puppy: context.pet.name, name: context.pet.name },
     weights,
   );
+}
+
+/**
+ * Catalogue §9 `rule.active_skill_practice` cadence: "per skill's freq/wk,
+ * min 1 day gap".
+ *
+ * The seeded frequencies are human phrases ("3-5/week", "daily at first"), so
+ * the upper bound is read as the most often the content is willing to be
+ * practised and turned into the smallest honest gap between suggestions. A
+ * phrase with no readable number falls back to the rule's own cooldown.
+ */
+function practiceGapDays(recommendedFrequency: string): number {
+  const text = recommendedFrequency.toLowerCase();
+  if (text.includes("daily")) return 1;
+  const perWeek = [...text.matchAll(/\d+/g)]
+    .map((match) => Number(match[0]))
+    .filter((value) => value > 0);
+  if (perWeek.length === 0) return 1;
+  return Math.max(1, Math.floor(7 / Math.max(...perWeek)));
+}
+
+/**
+ * Catalogue §9 `rule.active_skill_practice`: selects a session for an active
+ * TrainingGoal. "Active goals are eligible, not forced, into every plan"
+ * (engine §26.2), so this competes on score like any other candidate.
+ *
+ * Hard constraints still apply (§12.3): a skill whose prerequisite is not
+ * started is not practisable just because someone selected it, and the
+ * catalogue cadence sets a per-skill floor under the rule's own cooldown.
+ */
+function activeSkillPracticeCandidates(
+  context: GenerationContext,
+  catalogue: CatalogueInput,
+  rule: RecommendationRuleRow,
+  candidates: Candidate[],
+  suppressed: PlanResult["diagnostics"]["suppressed"],
+  weights: ScoreWeights,
+): void {
+  const skillById = new Map(catalogue.training_skills.map((skill) => [skill.content_id, skill]));
+  const statusBySkill = new Map(context.training_state.map((state) => [state.skill_content_id, state.status]));
+
+  const active = context.training_state
+    .filter((state) => state.status === "active")
+    .sort((a, b) => compareText(a.skill_content_id, b.skill_content_id));
+
+  for (const state of active) {
+    const skill = skillById.get(state.skill_content_id);
+    // A goal whose skill has been retired from the catalogue keeps its history
+    // but has no current guidance to practise from.
+    if (!skill) continue;
+
+    const candidateKey = `${rule.content_id}:${skill.content_id}`;
+    const prerequisitesMet = skill.prerequisite_skill_refs.every((id) => {
+      const status = statusBySkill.get(id);
+      return status === "active" || status === "completed";
+    });
+    if (!prerequisitesMet) {
+      suppressed.push({ candidate_key: candidateKey, reason: "prerequisite_unmet" });
+      continue;
+    }
+
+    const cadenceRule: RecommendationRuleRow = {
+      ...rule,
+      cooldown_days: Math.max(rule.cooldown_days, practiceGapDays(skill.recommended_frequency)),
+    };
+
+    // Sessions logged in the Training tab and completions of a promoted
+    // recommendation are both practice; the context supplies the first as
+    // `last_practiced_on` and the second through history.
+    const latestHistory = latestHistoryDate(
+      context,
+      (entry) => entry.content_id === skill.content_id && entry.outcome === "completed",
+    );
+    const lastPractised = [state.last_practiced_on, latestHistory]
+      .filter((value): value is LocalDate => Boolean(value))
+      .sort(compareText)
+      .pop();
+
+    // The seeded template says "last practiced {n} days ago". A goal that has
+    // been started but never practised has no such day, so the count falls
+    // back to when the household started it — the only other date the
+    // sentence could honestly be measured from. Sharpening that copy for the
+    // never-practised case is a content question, not an engine one.
+    const reference = lastPractised ?? state.started_on ?? context.local_date;
+
+    addCandidate(
+      candidates,
+      suppressed,
+      context,
+      cadenceRule,
+      skill,
+      `Practice ${skill.title.toLowerCase()}`,
+      "training",
+      skill.effort_band,
+      {
+        Puppy: context.pet.name,
+        name: context.pet.name,
+        Skill: skill.title,
+        skill: skill.title,
+        n: Math.max(0, daysBetween(reference, context.local_date)),
+      },
+      weights,
+      {
+        // §19.2 "Continue a skill that the owner actively selected" — the only
+        // two adaptations the MVP allows for training, and both apply here.
+        user_selected_goal: state.user_selected_goal === false ? 0 : weights.user_selected_goal,
+        continuity_value: weights.continuity_value,
+      },
+    );
+  }
 }
 
 function renderTemplate(template: string, values: Record<string, string | number>): string {
@@ -867,6 +978,8 @@ export function generatePlan(context: GenerationContext): PlanResult {
   if (homecomingRule) homecomingCandidate(context, catalogue, homecomingRule, candidates, suppressed, weights);
   const startRule = rules.get("rule.start_next_skill");
   if (startRule) startSkillCandidates(context, catalogue, stage, startRule, candidates, suppressed, weights);
+  const practiceRule = rules.get("rule.active_skill_practice");
+  if (practiceRule) activeSkillPracticeCandidates(context, catalogue, practiceRule, candidates, suppressed, weights);
   const socialRule = rules.get("rule.socialization_breadth");
   if (socialRule) socializationCandidates(context, catalogue, stage, socialRule, candidates, suppressed, weights);
   const handlingRule = rules.get("rule.handling_cadence");

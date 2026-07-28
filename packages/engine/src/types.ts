@@ -178,13 +178,24 @@ export interface CatalogueInput {
   socialization_catalog: SocializationRow[];
 }
 
-export type TrainingStatus = "not_started" | "active" | "paused" | "completed";
+/**
+ * `retired` is a closed pursuit, and deliberately not a synonym for either
+ * neighbour: unlike `not_started` it must not be re-proposed by
+ * `rule.start_next_skill`, and unlike `completed` it must not satisfy another
+ * skill's prerequisite (§12.3) — a household that gave up on crate comfort has
+ * not earned alone-time practice.
+ */
+export type TrainingStatus = "not_started" | "active" | "paused" | "completed" | "retired";
 
 export interface TrainingStateInput {
   skill_content_id: string;
   status: TrainingStatus;
   user_selected_goal?: boolean;
   started_on?: LocalDate;
+  /** Most recent logged TrainingSession, for `rule.active_skill_practice`. */
+  last_practiced_on?: LocalDate;
+  /** Owner-reported only (F08); carried for explanation and diagnostics. */
+  progress_state?: string;
 }
 
 export interface HistoryEntry {

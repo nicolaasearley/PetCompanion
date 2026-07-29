@@ -388,13 +388,16 @@ final class ReviewDriver {
     func dismissSystemPrompt() -> Bool {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 
-        // Inside a real alert, generic titles are unambiguous.
-        for source in [app, springboard] {
-            let alert = source.alerts.firstMatch
-            guard alert.exists else { continue }
-            let label = alert.label
+        // Springboard alerts are unambiguously the system's, so generic
+        // titles are safe there. The app's own alerts are deliberately NOT
+        // searched this way: HM-01's quick-add alert has a "Cancel" button,
+        // and dismissing it here would close the very screen the scenario
+        // was about to photograph.
+        let springboardAlert = springboard.alerts.firstMatch
+        if springboardAlert.exists {
+            let label = springboardAlert.label
             for title in ["Not Now", "Don't Allow", "Dismiss", "Cancel", "Close"] {
-                let button = alert.buttons[title]
+                let button = springboardAlert.buttons[title]
                 if button.exists, button.isHittable {
                     button.tap()
                     note("declined the system prompt “\(label)” with “\(title)”")
@@ -405,9 +408,8 @@ final class ReviewDriver {
         }
 
         // "Save Password?" is not published as an alert — it is a plain
-        // window in the app's own hierarchy. Only titles that could not
-        // possibly belong to this app are matched loose like this; a bare
-        // "Cancel" or "Close" would collide with the app's own sheets.
+        // window in the app's own hierarchy, so it can only be matched by
+        // button title. These two titles appear nowhere in this app.
         for title in ["Not Now", "Don't Allow"] {
             for source in [app, springboard] {
                 let button = source.buttons[title]

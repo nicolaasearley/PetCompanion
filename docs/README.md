@@ -24,10 +24,10 @@ technical decisions should be recorded here before or alongside implementation.
 16. [Wireframes — Planner, Training, Care, Life, Settings](16-wireframes-planner-training-care-life-settings.md)
 17. [Implementation Plan — Slice A](17-implementation-plan-slice-a.md)
 18. [Content Copy — Lessons and Stage Language](18-content-copy.md)
-19. [Current Build Status](19-current-build-status.md)
+19. [Current Build Status](19-current-build-status.md) — superseded; local-run checklist only
 20. [Implementation Plan — Slice B Daily Coordination](20-implementation-plan-slice-b.md)
 21. [Hosted Supabase Deployment Runbook](21-hosted-supabase-deployment.md)
-22. [Handoff](22-handoff.md) — start here if you are new to the project
+22. [Handoff](22-handoff.md) — start here; §2 is current product status
 
 ## Working conventions
 

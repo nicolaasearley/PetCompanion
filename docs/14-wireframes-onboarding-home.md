@@ -2,7 +2,7 @@
 
 **Status:** Draft  
 **Version:** 0.1  
-**Last updated:** 2026-07-26  
+**Last updated:** 2026-07-29
 **Related documents:** [Information Architecture](05-information-architecture.md),
 [Daily Plan Engine](12-daily-plan-engine.md), [Core Features](03-core-features.md),
 [User Stories](04-user-stories.md), [UI Design System](09-ui-design-system.md)
@@ -109,6 +109,48 @@ One shared structure; fields depend on the chosen identity method
 - **A11y:** errors announced via live region and focus moved to the error;
   fields labeled; no timeout that discards input.
 - **Traces:** F01; US-001–US-003.
+
+#### ON-04 recovery states
+
+ON-03 exposes a 44-point “Forgot password?” action after the email/password
+form. ON-04 is a two-stage native flow:
+
+1. **Request reset:** one labeled email field and “Send reset instructions.”
+   Invalid email is explained inline before any request. While submitting, the
+   action retains its size, shows progress, and cannot be submitted twice.
+2. **Generic acknowledgement:** after the fixed submission interval, always
+   say “If we can match that address, recovery instructions may arrive
+   shortly. For privacy, we can’t confirm whether an account exists or an
+   email was sent.” Success, nonexistent-account behavior, account-specific
+   throttles, provider errors, and transport failures never produce different
+   UI states or timing based on the server response.
+3. **Open link:** the registered callback is
+   `petcompanion://password-reset`. The app buffers a cold-launch URL until the
+   selected backend is ready. The Supabase SDK must successfully exchange the
+   PKCE callback before the password form appears; malformed, expired, reused,
+   or wrong-device callbacks show an honest invalid-link state.
+4. **Set password:** two password-manager-compatible secure fields collect the
+   new password and confirmation. The app requires at least 8 characters and
+   matching values, with inline explanation. It never logs either value.
+5. **Completion:** only a successful authenticated password update shows
+   “Password updated.” Recovery sessions opened from signed-out onboarding are
+   discarded before returning to ON-03.
+6. **Already signed in:** never exchange a recovery callback while an account
+   is active, including the launch window where the SDK has restored a
+   Keychain session but household setup has not finished loading. Explain that
+   the caregiver must sign out before using the link, then return to the
+   untouched app state. Password changes for authenticated users are a future
+   Settings flow, not ON-04.
+
+Mock mode performs no email delivery. Its acknowledgement explicitly says so
+and offers an in-app review link, allowing the complete state machine to be
+tested without implying that mail was sent.
+
+- **A11y:** all controls meet the 44-point target; headings, labels, errors,
+  progress, and completion are announced; text reflows at accessibility sizes.
+- **Security:** the callback scheme is routing only. A URL never grants access
+  by itself; the SDK exchange establishes the recovery session used by the
+  password update.
 
 ### ON-05 — Invitation review
 

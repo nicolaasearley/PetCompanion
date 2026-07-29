@@ -1123,7 +1123,7 @@ scenarios, not veterinary schedules.
 
 - Practice name response for three minutes
 - Calmly observe one new environment
-- Brief brushing session
+- Gather records and questions — veterinary appointment in three days
 
 **Coming up**
 
@@ -1136,6 +1136,8 @@ scenarios, not veterinary schedules.
 - Recall may remain in the eligible pool but does not force every active goal
   into the plan.
 - The appointment is visible before its due date.
+- `rule.event_prep_vet` surfaces preparation while the vet event is within its
+  three-day lead window.
 
 ### 26.3 Busy household day
 

@@ -36,25 +36,25 @@ struct MainTabView: View {
         Group {
             if let planViewModel {
                 TabView(selection: $destination) {
-                    Tab("Home", systemImage: "house", value: .home) {
+                    Tab(PCL10n.Tab.home, systemImage: "house", value: .home) {
                         HomeView(viewModel: planViewModel)
                     }
-                    Tab("Planner", systemImage: "calendar", value: .planner) {
+                    Tab(PCL10n.Tab.planner, systemImage: "calendar", value: .planner) {
                         PlannerView()
                     }
-                    Tab("Training", systemImage: "graduationcap", value: .training) {
+                    Tab(PCL10n.Tab.training, systemImage: "graduationcap", value: .training) {
                         TrainingTabView()
                     }
-                    Tab("Care", systemImage: "heart.text.square", value: .care) {
+                    Tab(PCL10n.Tab.care, systemImage: "heart.text.square", value: .care) {
                         CareView()
                     }
-                    Tab("Life", systemImage: "book", value: .life) {
+                    Tab(PCL10n.Tab.life, systemImage: "book", value: .life) {
                         LifeView()
                     }
                 }
                 .tint(Color.pc.primary)
             } else {
-                ProgressView("Preparing your plan…")
+                ProgressView(PCL10n.Shell.preparingPlan)
                     .tint(Color.pc.primary)
             }
         }

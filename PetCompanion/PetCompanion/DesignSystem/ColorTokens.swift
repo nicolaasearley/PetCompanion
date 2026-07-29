@@ -43,6 +43,12 @@ extension Color {
         static let info = Color.pcToken(light: 0x4E6E8E, dark: 0x93AEC7)
         /// True failures and destructive actions only.
         static let danger = Color.pcToken(light: 0x9E3B2E, dark: 0xE0796A)
+        /// True-failure banner/card tint. Distinct from `attentionBg`
+        /// (needs-attention emphasis, not a failure): same light, low-
+        /// saturation family as `attentionBg` but hued toward `danger`'s
+        /// redder cast rather than attention's warmer terracotta, so a real
+        /// error never borrows the needs-attention tint (doc 22 §7).
+        static let dangerBg = Color.pcToken(light: 0xFBE7E2, dark: 0x3B231D)
     }
 }
 

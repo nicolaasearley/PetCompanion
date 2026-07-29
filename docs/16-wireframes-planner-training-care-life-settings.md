@@ -2,7 +2,7 @@
 
 **Status:** Draft  
 **Version:** 0.1  
-**Last updated:** 2026-07-26  
+**Last updated:** 2026-07-29
 **Related documents:** [Information Architecture](05-information-architecture.md),
 [Wireframes — Onboarding and Home](14-wireframes-onboarding-home.md),
 [UI Design System](09-ui-design-system.md), [Core Features](03-core-features.md),
@@ -20,6 +20,11 @@ specified as compact tables instead of frames.
 ## 2. Planner stack
 
 ### PL-01 — Calendar (agenda-first)
+
+Updated 2026-07-29: the Planner primary surface is the forward-scrolling
+household-local agenda (not a single selected day). Week rail and month jump
+remain secondary anchors; occurrence actions, recurrence, and honest
+empty/unplanned/offline states are unchanged.
 
 ```text
 ┌─────────────────────────────┐
@@ -49,12 +54,21 @@ specified as compact tables instead of frames.
 
 - **Actions:** tap occurrence → HM-02; tap event → PL-04; (+) → GL-01;
   Month ▾ → jump grid (dates with item dots); pull past → previous days
-  (read-only history).
+  (read-only history). Scrolling near the end extends the forward window.
 - **States:** empty week (calm copy + add); offline (cached window, stale
   line); loading skeleton rows.
 - **A11y:** day headers are headings; event vs task announced by type.
 - **Traces:** F11; US-080; household time zone rules (DM §8).
-
+- **Shipped:** forward agenda window in household time zone (`PlannerStore`
+  + `PlannerAgendaGrouping`); week navigator + month jump as secondary
+  affordances; inline empty-day add for today/future only.
+  **Update 2026-07-29 (US-080):** confirmed household Events attach into the
+  visible agenda window via `EventService`; day sections mix event rows
+  (kind glyph + chevron, no completion checkbox) with task occurrences;
+  tap opens a read-only detail sheet (edit remains Care → Appointments).
+  **Update 2026-07-29 (month-grid dots):** month jump uses a custom grid;
+  filled dots mark days with tasks and/or confirmed events from the loaded
+  window plus the visible/fetchable month (VoiceOver: “Has tasks or events”).
 ### PL-02 — Task editor (create/edit)
 
 ```text
@@ -91,23 +105,52 @@ specified as compact tables instead of frames.
 | Content | Title, kind (vet/class/grooming/other), pet, date, all-day toggle, time, location text, provider (vet kind), notes, reminder lead times (multi-select) | Event header (kind icon, title, when, where), provider link, linked preparation tasks with live states, reminder summary, map-free location text |
 | Primary action | Save | Edit |
 | Secondary | Cancel event (confirm; explains prep-task and reminder effects) | Add preparation task; reschedule (→ editor) |
-| Key rules | Rescheduling cancels old notification candidates, creates new (US-086) | Completed prep stays completed after moves (Scenario G); cancelled event shows struck state, not deletion |
+| Key rules | Rescheduling cancels old notification candidates, creates new (US-086 — server `refresh_event_notification_candidates`) | Completed prep stays completed after moves (Scenario G); cancelled event shows struck state, not deletion |
 | States | Validation; revision conflict | Event moved/cancelled since notification tap → truthful current state |
 | Traces | F11; US-081, US-086 | US-074, US-086 |
+
+- **Shipped (foundation, 2026-07-29):** Event CRUD via write-path; Settings →
+  Appointments & events list + editor (kind, pet, date, all-day/time, location,
+  notes, reminder lead multi-select). Cancel retains the row; archive
+  soft-deletes. Generation context feeds confirmed events into the engine.
+  Planner agenda event rows, PL-04 prep-task linkage, and notification
+  candidate refresh on reschedule remain follow-ups.
 
 ## 3. Training stack
 
 ### TR-01 — Training overview
 
+Updated 2026-07-29 (owner-directed hierarchy change): the socialization
+passport is promoted from a plain `BROWSE` row to a hero tile leading the
+whole screen, above Active goals — its own domain, not a training skill, but
+the caregiver action this screen exists to surface first. There is exactly
+one entry point to it now; the old `BROWSE` row is removed rather than
+duplicated. The tile shows the passport's stable purpose line ("Gentle,
+positive, varied — quality beats quantity.") and a chevron, not a live
+reading of it — `TrainingView` does not load a `SocializationStore` just to
+decorate the tile, so nothing here is a fabricated "current state" (F09; no
+score, no ratio, doc 22 §7 truthfulness).
+
 ```text
 ┌─────────────────────────────┐
 │  Training        🐕 Maple ▾ │
 ├─────────────────────────────┤
+│  ┌───────────────────────┐  │
+│  │ 🐾 Socialization       │  │ ← hero tile, first on screen
+│  │    passport            │  │
+│  │ Gentle, positive,      │  │
+│  │ varied — quality beats │  │
+│  │ quantity.          ›   │  │
+│  └───────────────────────┘  │
 │  ACTIVE GOALS (2)           │
 │  ┌───────────────────────┐  │
 │  │ Recall                │  │
 │  │ Practicing · last     │  │ ← progress state + recency
 │  │ session 2 days ago    │  │
+│  │ Practicing            │  │ ← owner-reported state bar
+│  │ ■ ■ ■ □ □ □           │  │   (discrete steps, NOT %)
+│  │ Owner-reported · not  │  │
+│  │ a score               │  │
 │  │ [ Log session ]       │  │
 │  ├───────────────────────┤  │
 │  │ Paw handling          │  │
@@ -122,7 +165,6 @@ specified as compact tables instead of frames.
 │  └───────────────────────┘  │
 │  BROWSE                     │
 │  [ Skill catalogue › ]      │
-│  [ Socialization › ]        │
 │  RECENT SESSIONS            │
 │  · Recall — Nic, Mon ✓ went │
 │    well                     │
@@ -131,8 +173,17 @@ specified as compact tables instead of frames.
 └─────────────────────────────┘
 ```
 
+- **Progress affordance (2026-07-29):** Active goal cards, TR-03, and TR-05
+  show a segmented bar driven only by the owner-reported
+  `TrainingProgressState` position among F08's continuum. Rejects design-mock
+  “Module Completion 60%” and any session-count ratio as a completion score
+  (docs/22 §5.2; `PRODUCT.md`). Labels name the state; “Paused” prefixes the
+  title without moving the continuum step. Socialization category cards still
+  show **no** progress bars (F09).
 - **States:** no active goals → suggested starters for the stage; content
-  unavailable → cached catalogue + logged history intact.
+  unavailable → cached catalogue + logged history intact; no active pet →
+  the passport tile does not render (it has nothing to open — F09 is about
+  one puppy's real experiences).
 - **Traces:** F08; US-060, US-061, US-063, US-065.
 
 ### TR-02 — Skill catalogue (compact spec)
@@ -168,20 +219,25 @@ anything (US-060). → TR-03 on tap.
 │  · Escalating too fast      │
 │  · Snatching the item away  │
 │                             │
+│  Not started                │ ← owner-reported state bar when
+│  ■ □ □ □ □ □                │   a goal exists (not a %)
+│  Owner-reported · not a     │
+│  score                      │
 │  [ Start this goal ]        │ ← or [ Log session ] if active
 └─────────────────────────────┘
 ```
 
 - Start is idempotent (US-061); paused goal shows [ Resume ]. Lesson usable
-  without media (US-062).
+  without media (US-062). When a goal exists, the owner-reported continuum
+  bar appears above the actions (docs/09 §7.6a; docs/22 §5.2).
 - **Traces:** F08; US-060–US-062; content catalogue §7.
 
 ### TR-04 / TR-05 (compact spec)
 
 | Aspect | TR-04 Log session | TR-05 Progress history |
 | --- | --- | --- |
-| Content | Date (default today, back-dateable within bounds), optional duration, "How did it go?" (free note), optional progress-state change (explicit picker with "owner-reported" note), optional photo | Session list (date, actor, note) + progress-state change log with attribution |
-| Rules | One session never auto-advances mastery (US-063); state change is a separate deliberate control (US-065) | Read-only; states explained ("not a certification") |
+| Content | Date (default today, back-dateable within bounds), optional duration, "How did it go?" (free note), optional progress-state change (explicit picker with "owner-reported" note), optional photo | Current owner-reported state bar (discrete continuum steps + named label; no %) + session list (date, actor, note) + progress-state change log with attribution |
+| Rules | One session never auto-advances mastery (US-063); state change is a separate deliberate control (US-065) | Read-only; states explained ("not a certification"); bar position is the reported state, not session frequency |
 | Traces | US-056, US-063 | US-065 |
 
 ### TR-06 — Socialization passport
@@ -264,7 +320,7 @@ anything (US-060). → TR-03 on tap.
 | CA-02 Pet profile | All profile fields incl. exact/estimated birth control (as ON-07), homecoming date, photo; archive entry at bottom behind a confirm flow explaining effects (stops plans/notifications, history kept) | US-020–US-025 |
 | CA-03 Records list | Filter chips by type; rows show type icon, title, date, provenance badge (⚕ professional / ✎ owner-entered) | US-070, US-077 |
 | CA-04 Record detail | Full fields, attachments, provenance, change history for professional-provenance records; edit/archive | US-070, US-077, US-078 |
-| CA-05 Record editor | Typed forms per record type; vaccination: name, date, provider, next-due **only if explicitly known** ("leave blank unless your vet gave a date"); duplicate-suspect notice on save, review not auto-merge | US-070, US-076, US-077 |
+| CA-05 Record editor | Typed forms per record type; vaccination: name, date, provider, next-due **only if explicitly known** ("leave blank unless your vet gave a date"); duplicate-suspect notice on save, review not auto-merge. **Shipped 2026-07-29 as Vaccinations history list+editor on CA-01** (US-070) — next due is display-only entered fact, never computed. **Notes (US-077) shipped 2026-07-29 as general_note + document CRUD on CA-01** with image/PDF attachments on `household-media` (Scenario H; Life stays image-only). Grooming history (US-076) also live on CA-01. | US-070, US-076, US-077 |
 | CA-08 Weight & growth | Entry list + simple line visualization ("not a clinical assessment" footnote); unit toggle display-only; add: value, unit, date, note; obvious-outlier soft prompt ("6.4 kg → 64 kg — is that right?") | US-075 |
 | CA-09 Providers | Contact cards (name, kind, phone tap-to-call, address, notes); referenced-by list | US-073, US-074 |
 
@@ -362,7 +418,10 @@ role table).
 ## 8. Open questions
 
 1. Planner month-grid in MVP or agenda-only first (IA §18.5) — recommend
-   agenda-only for Slice D, grid fast-follow.
+   agenda-only for Slice D, grid fast-follow. **2026-07-29:** agenda-only
+   shipped as PL-01 primary; month jump remains the secondary date picker.
+   **Same day:** jump sheet shows grid dots for days with tasks/events
+   (loaded window + visible month fetch).
 2. Whether CA-08's outlier prompt thresholds are worth Slice D scope or
    post-MVP.
 3. TR-06 breadth line wording ("4 this month") — must not read as a score;

@@ -794,7 +794,9 @@ concurrent versions both preserved (US-094). Text excluded from analytics.
 
 ### 12.6 Media
 
-**Purpose:** photos (MVP) and videos (P2) attached to household records.
+**Purpose:** photos (MVP), Care document PDFs, and videos (P2) attached to
+household records. Life milestone attach stays image-only; Care document
+notes may use `application/pdf` in addition to image MIME types.
 
 **Key fields:** `id`, `household_id`, `pet_id?`, `uploaded_by`,
 `storage_ref`, `mime_type`, `byte_size`, `capture_time?` (from metadata),
@@ -838,19 +840,21 @@ deferred by Technical Architecture without violating this model.
 derived from plans, occurrences, and events; delivery is a separate concern
 (engine §21).
 
-**Key fields:** `id`, `recipient_user_id`, `household_id`, `class` (engine
-§21.1), `source_ref` (occurrence / event / plan), `scheduled_for` (instant),
-`dedupe_key` (unique — e.g. class + source + trigger; the "idempotency key"
-of US-083), `state`
+**Key fields:** `id`, `recipient_user_id`, `household_id`,
+`occurrence_id?` **or** `event_id?` (mutually exclusive), `class`
+(`task_due | task_snooze | event_reminder`), `source_ref` (occurrence /
+event / plan), `scheduled_for` (instant), `dedupe_key` (unique — e.g. class
++ source + trigger; the "idempotency key" of US-083), `state`
 (`scheduled | sent | cancelled | suppressed | failed`), `resolved_at?`.
 
 **Rules:** candidates are cancelled when their source completes, cancels, or
-reschedules (F11 "no stale notifications"). Immediately before delivery the
-sender re-verifies: item still active, not completed by anyone, recipient
-still authorized, quiet-hours respected (with the explicit time-sensitive
-exception, engine §21.4), and `dedupe_key` unsent (engine §21.3). Failures of
-these checks record `suppressed` with a reason — giving the F14 stale-
-notification guardrail its data.
+reschedules (F11 "no stale notifications"). Event create/edit/cancel/archive
+refresh via `refresh_event_notification_candidates` (US-086). Immediately
+before delivery the sender re-verifies: item still active, not completed by
+anyone, recipient still authorized, quiet-hours respected (with the explicit
+time-sensitive exception, engine §21.4), and `dedupe_key` unsent (engine
+§21.3). Failures of these checks record `suppressed` with a reason — giving
+the F14 stale-notification guardrail its data.
 
 ### 14.2 NotificationDelivery
 

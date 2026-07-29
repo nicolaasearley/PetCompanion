@@ -1,0 +1,1620 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "(no items)" : {
+
+    },
+    "%@ — %@%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ — %2$@%3$@"
+          }
+        }
+      }
+    },
+    "%@ — this category isn't being suggested." : {
+
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@ · version %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · version %2$lld"
+          }
+        }
+      }
+    },
+    "%@ ›" : {
+
+    },
+    "%@ window, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ window, %2$@"
+          }
+        }
+      }
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "%@, %@, will be removed for good. This can't be undone here." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, will be removed for good. This can't be undone here."
+          }
+        }
+      }
+    },
+    "%@, %@, you" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, you"
+          }
+        }
+      }
+    },
+    "%@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@. %2$@"
+          }
+        }
+      }
+    },
+    "%@. Confirm you still want to record another dose." : {
+
+    },
+    "%lld" : {
+
+    },
+    "%lld minute%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld minute%2$@"
+          }
+        }
+      }
+    },
+    "0.0" : {
+
+    },
+    "1 hour before" : {
+
+    },
+    "10 minutes before" : {
+
+    },
+    "15 minutes before" : {
+
+    },
+    "30 minutes before" : {
+
+    },
+    "A caregiver sees everything in %@: every pet, plan, record, and note — and can add and complete items." : {
+
+    },
+    "A few words to remember" : {
+
+    },
+    "A filled dot marks days with tasks or events." : {
+
+    },
+    "A shared daily plan for your household — what matters today, what's done, what's next." : {
+
+    },
+    "A simple record of entries — not a clinical assessment." : {
+
+    },
+    "about %lld weeks old as of today" : {
+
+    },
+    "Account" : {
+
+    },
+    "Activity" : {
+
+    },
+    "Add" : {
+
+    },
+    "Add a milestone" : {
+
+    },
+    "Add a PDF document to this note" : {
+
+    },
+    "Add a photo to this milestone" : {
+
+    },
+    "Add a photo to this note" : {
+
+    },
+    "Add a task" : {
+
+    },
+    "Add a task for %@" : {
+
+    },
+    "Add grooming" : {
+
+    },
+    "Add medication" : {
+
+    },
+    "Add milestone" : {
+
+    },
+    "Add milestone: %@" : {
+
+    },
+    "Add note" : {
+
+    },
+    "Add or edit vet appointments and other household events" : {
+
+    },
+    "Add PDF" : {
+
+    },
+    "Add photo" : {
+
+    },
+    "Add provider" : {
+
+    },
+    "Add vaccination" : {
+
+    },
+    "Add weight" : {
+
+    },
+    "Address" : {
+
+    },
+    "All day" : {
+
+    },
+    "Already done" : {
+
+    },
+    "Anything %@ met that isn't listed — the passport is a record of real life, not a fixed list." : {
+
+    },
+    "Anything you want to remember" : {
+
+    },
+    "Anytime" : {
+
+    },
+    "Apply to" : {
+
+    },
+    "Appointment title" : {
+
+    },
+    "Appointments & events" : {
+
+    },
+    "Archive" : {
+
+    },
+    "Archive schedule" : {
+
+    },
+    "Archive this schedule?" : {
+
+    },
+    "As written" : {
+
+    },
+    "As written on the record" : {
+
+    },
+    "At least %lld characters" : {
+
+    },
+    "At least 8 characters" : {
+
+    },
+    "At time" : {
+
+    },
+    "Attached document photo" : {
+
+    },
+    "Attachment (optional)" : {
+
+    },
+    "Attachment didn’t upload — edit this note to try again." : {
+
+    },
+    "Attachment upload pending or failed for this note" : {
+
+    },
+    "Attempted %@" : {
+
+    },
+    "Birth date" : {
+
+    },
+    "Call %@" : {
+
+    },
+    "Can't connect" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Cancel event" : {
+
+    },
+    "Cancel task" : {
+
+    },
+    "Cancel this event?" : {
+
+    },
+    "Cancel this task?" : {
+
+    },
+    "Care" : {
+
+    },
+    "Care records are not medical advice. Keep medication and treatment instructions exactly as provided by your veterinarian." : {
+
+    },
+    "Care records are not medical advice. This is a household history of what was recorded." : {
+
+    },
+    "Care records are not medical advice. This is a household record of what you measured." : {
+
+    },
+    "Caregiver" : {
+
+    },
+    "Caregivers share every pet, plan, and record. Completions always show who did them." : {
+
+    },
+    "Category" : {
+
+    },
+    "Category options" : {
+
+    },
+    "Change PDF" : {
+
+    },
+    "Change photo" : {
+
+    },
+    "Change the progress state" : {
+
+    },
+    "Changes how weights look here. Saved values keep the unit you entered." : {
+
+    },
+    "Check your email" : {
+
+    },
+    "Checking this invitation…" : {
+
+    },
+    "Checking your reset link…" : {
+
+    },
+    "Choose a new password" : {
+
+    },
+    "Choose a pet" : {
+
+    },
+    "Clear" : {
+
+    },
+    "Clinic or contact name" : {
+
+    },
+    "Clinic or place (optional)" : {
+
+    },
+    "Close" : {
+
+    },
+    "Coming home in %lld days" : {
+
+    },
+    "Coming home tomorrow" : {
+
+    },
+    "Completed %@" : {
+
+    },
+    "Confirm for %@" : {
+
+    },
+    "Connecting…" : {
+
+    },
+    "Copy this link now — it's shown only once." : {
+
+    },
+    "Couldn’t load this attachment." : {
+
+    },
+    "Creates a single-use invitation link" : {
+
+    },
+    "Date" : {
+
+    },
+    "Date done" : {
+
+    },
+    "Date given" : {
+
+    },
+    "Day %lld" : {
+
+    },
+    "Days" : {
+
+    },
+    "Demo mode does not send email. Open the review link to continue the recovery flow." : {
+
+    },
+    "Discard" : {
+
+    },
+    "Discard permanently" : {
+
+    },
+    "Discard this change?" : {
+
+    },
+    "Dismiss" : {
+
+    },
+    "Dismiss error" : {
+
+    },
+    "Dismiss message" : {
+
+    },
+    "Display unit" : {
+
+    },
+    "Document name" : {
+
+    },
+    "Does not repeat" : {
+
+    },
+    "Done" : {
+
+    },
+    "Done %@" : {
+
+    },
+    "Dose: “%@”" : {
+
+    },
+    "Due date" : {
+
+    },
+    "e.g. 1 tablet" : {
+
+    },
+    "Each caregiver gets their own account — no shared passwords." : {
+
+    },
+    "Edit" : {
+
+    },
+    "Edit event" : {
+
+    },
+    "Edit grooming" : {
+
+    },
+    "Edit medication" : {
+
+    },
+    "Edit milestone" : {
+
+    },
+    "Edit note" : {
+
+    },
+    "Edit provider" : {
+
+    },
+    "Edit schedule" : {
+
+    },
+    "Edit task" : {
+
+    },
+    "Edit vaccination" : {
+
+    },
+    "Edit weight" : {
+
+    },
+    "Enter it again" : {
+
+    },
+    "Enter the email you use for PetCompanion. We’ll send instructions if an account matches it." : {
+
+    },
+    "Entered as %@" : {
+
+    },
+    "Event" : {
+
+    },
+    "Event kind" : {
+
+    },
+    "Events appear on the daily plan when they’re coming up. Reminder delivery is configured in Settings." : {
+
+    },
+    "Every %lld days" : {
+
+    },
+    "Everyone here sees the same pets, plans, and records, and every completion shows who did it." : {
+
+    },
+    "Exact" : {
+
+    },
+    "Exact time" : {
+
+    },
+    "Experience: %@" : {
+
+    },
+    "Expires %@" : {
+
+    },
+    "Expires %@. Your partner signs in, then chooses “I have an invitation” and pastes this link." : {
+
+    },
+    "Filled dots mark days with tasks or events" : {
+
+    },
+    "First / next due date" : {
+
+    },
+    "Fits the %@ stage · prerequisites met" : {
+
+    },
+    "Followed %@ v%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Followed %1$@ v%2$lld"
+          }
+        }
+      }
+    },
+    "For" : {
+
+    },
+    "For %@" : {
+
+    },
+    "For example, the neighbour's wheelie bin" : {
+
+    },
+    "For example, two rooms away with the door open" : {
+
+    },
+    "Forgot password?" : {
+
+    },
+    "Gentle, positive, varied — quality beats quantity." : {
+
+    },
+    "Getting ready together" : {
+
+    },
+    "Given %@" : {
+
+    },
+    "Grooming" : {
+
+    },
+    "Grooming history is record-keeping, not a schedule. Leave next due blank unless you chose a date yourself." : {
+
+    },
+    "History will appear when Planner sync is connected." : {
+
+    },
+    "home.all_caught_up.add_task" : {
+      "comment" : "Primary action on the Home empty state when the daily plan has no open items.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add a task"
+          }
+        }
+      }
+    },
+    "home.all_caught_up.message" : {
+      "comment" : "Empty-state copy when every plan item for today is complete (US-108).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You're all caught up. Add something to the plan or enjoy the day together."
+          }
+        }
+      }
+    },
+    "home.profile_settings.accessibility" : {
+      "comment" : "VoiceOver label for the profile and settings button in the Home header.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profile and settings"
+          }
+        }
+      }
+    },
+    "home.quick_add.accessibility_hint" : {
+      "comment" : "VoiceOver hint for the floating quick-add task button on Home.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adds a one-time task to today's plan"
+          }
+        }
+      }
+    },
+    "home.quick_add.title" : {
+      "comment" : "Floating action button label on Home for adding a one-time task.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add task"
+          }
+        }
+      }
+    },
+    "Homecoming date" : {
+
+    },
+    "Household" : {
+
+    },
+    "Household name" : {
+
+    },
+    "How did it go?" : {
+
+    },
+    "How much can today hold?" : {
+
+    },
+    "I understand another caregiver recently recorded this" : {
+
+    },
+    "Ideas that fit %@'s %@ stage." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Ideas that fit %1$@'s %2$@ stage."
+          }
+        }
+      }
+    },
+    "If we can match that address, recovery instructions may arrive shortly. For privacy, we can’t confirm whether an account exists or an email was sent." : {
+
+    },
+    "Include time windows" : {
+
+    },
+    "Invitation" : {
+
+    },
+    "Invitation declined" : {
+
+    },
+    "Invitation link" : {
+
+    },
+    "Invite" : {
+
+    },
+    "Invite a caregiver" : {
+
+    },
+    "Invited by %@" : {
+
+    },
+    "Is %@ home yet?" : {
+
+    },
+    "It joins today's plan for %@." : {
+
+    },
+    "It leaves the timeline. Household history keeps an audit entry." : {
+
+    },
+    "It won’t appear in Appointments anymore." : {
+
+    },
+    "Join a household" : {
+
+    },
+    "Joining someone else's household?" : {
+
+    },
+    "Joining someone? Open your invitation link." : {
+
+    },
+    "Joining…" : {
+
+    },
+    "Jump to date" : {
+
+    },
+    "Keep" : {
+
+    },
+    "Keep it" : {
+
+    },
+    "Keep sessions short and stop while your puppy is still comfortable. This is general training guidance, not veterinary or behavioral diagnosis." : {
+
+    },
+    "Keep task" : {
+
+    },
+    "Kind" : {
+
+    },
+    "Leave this off unless you want a date shown. PetCompanion never calculates a grooming due date." : {
+
+    },
+    "Leave this off unless your vet gave an explicit date. PetCompanion never calculates a due date." : {
+
+    },
+    "Life" : {
+
+    },
+    "Loading %@'s story…" : {
+
+    },
+    "Loading agenda" : {
+
+    },
+    "Loading appointments" : {
+
+    },
+    "Loading appointments…" : {
+
+    },
+    "Loading attachment" : {
+
+    },
+    "Loading grooming" : {
+
+    },
+    "Loading grooming…" : {
+
+    },
+    "Loading history…" : {
+
+    },
+    "Loading medications" : {
+
+    },
+    "Loading medications…" : {
+
+    },
+    "Loading members…" : {
+
+    },
+    "Loading milestones" : {
+
+    },
+    "Loading more days" : {
+
+    },
+    "Loading notes" : {
+
+    },
+    "Loading notes…" : {
+
+    },
+    "Loading photo" : {
+
+    },
+    "Loading photo…" : {
+
+    },
+    "Loading providers" : {
+
+    },
+    "Loading providers…" : {
+
+    },
+    "Loading today's plan" : {
+
+    },
+    "Loading vaccinations" : {
+
+    },
+    "Loading vaccinations…" : {
+
+    },
+    "Loading weights" : {
+
+    },
+    "Loading weights…" : {
+
+    },
+    "Mark %@ complete" : {
+
+    },
+    "Marked %@" : {
+
+    },
+    "Meals per day" : {
+
+    },
+    "Medication" : {
+
+    },
+    "Medications" : {
+
+    },
+    "Medications are record-keeping, not medical advice. Never double, skip, or change a dose based on this app." : {
+
+    },
+    "Members" : {
+
+    },
+    "Members & invitations" : {
+
+    },
+    "Milestone photo" : {
+
+    },
+    "Milestone photo unavailable" : {
+
+    },
+    "Milestone title" : {
+
+    },
+    "Name" : {
+
+    },
+    "Name your household" : {
+
+    },
+    "Needs review" : {
+
+    },
+    "Needs: %@" : {
+
+    },
+    "New date" : {
+
+    },
+    "New event" : {
+
+    },
+    "New task" : {
+
+    },
+    "Next due" : {
+
+    },
+    "Next due %@ (as entered)" : {
+
+    },
+    "Next due date is known" : {
+
+    },
+    "Next month" : {
+
+    },
+    "Next steps" : {
+
+    },
+    "Next week" : {
+
+    },
+    "No changes recorded yet." : {
+
+    },
+    "No invitations yet." : {
+
+    },
+    "No sessions logged yet." : {
+
+    },
+    "Nobody has reported progress yet." : {
+
+    },
+    "Not applied" : {
+
+    },
+    "Not referenced by other care records yet." : {
+
+    },
+    "Not relevant today" : {
+
+    },
+    "Notes" : {
+
+    },
+    "Notes (optional)" : {
+
+    },
+    "Notes are private household records, not medical advice. They never diagnose or recommend treatment." : {
+
+    },
+    "Notes for your household" : {
+
+    },
+    "Nothing recorded in this category yet." : {
+
+    },
+    "Nothing was shared with you, and the household owner can send a new invitation if you change your mind." : {
+
+    },
+    "OK" : {
+
+    },
+    "Only the household owner can invite or revoke caregivers." : {
+
+    },
+    "Only you, as the owner, can invite or remove caregivers." : {
+
+    },
+    "Open" : {
+
+    },
+    "Open notification settings" : {
+
+    },
+    "Opens %@" : {
+
+    },
+    "Opens %@ for %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Opens %1$@ for %2$@"
+          }
+        }
+      }
+    },
+    "Opens date picker. Filled dots mark days with tasks or events." : {
+
+    },
+    "Opens details" : {
+
+    },
+    "Opens event details" : {
+
+    },
+    "Opens lesson" : {
+
+    },
+    "Opens task details and history" : {
+
+    },
+    "Opens the socialization passport" : {
+
+    },
+    "Opens the time zone list" : {
+
+    },
+    "Opens this category" : {
+
+    },
+    "Optional household context" : {
+
+    },
+    "Optional note" : {
+
+    },
+    "Optional notes" : {
+
+    },
+    "Options for %@" : {
+
+    },
+    "Owner" : {
+
+    },
+    "Password updated" : {
+
+    },
+    "Past records stay in the passport, and you can undo this any time." : {
+
+    },
+    "Past records that mention this provider keep their history. The contact won’t appear in the list." : {
+
+    },
+    "Paste the invitation link the household owner sent you. We'll show you which household it's for before you join anything." : {
+
+    },
+    "PDF attachment" : {
+
+    },
+    "PDF attachment, %@" : {
+
+    },
+    "Pet" : {
+
+    },
+    "petcompanion://invitation/…" : {
+
+    },
+    "Phone number" : {
+
+    },
+    "Photo" : {
+
+    },
+    "Photo (optional)" : {
+
+    },
+    "Photo didn’t finish uploading. Edit to retry." : {
+
+    },
+    "Photo is still uploading…" : {
+
+    },
+    "Photo placeholder" : {
+
+    },
+    "Photo, breed, and other details can wait — add them any time in Care." : {
+
+    },
+    "Photos or PDFs up to 10 MB. The note saves even if the upload fails — you can retry later." : {
+
+    },
+    "Photos up to 10 MB. The note saves even if the photo upload fails — you can retry later." : {
+
+    },
+    "Plan reminders" : {
+
+    },
+    "Planned — not available yet" : {
+
+    },
+    "Planner" : {
+
+    },
+    "Plans and reminders use this time zone." : {
+
+    },
+    "Please confirm: %@" : {
+
+    },
+    "Preparing your Planner…" : {
+
+    },
+    "Preview" : {
+
+    },
+    "Previous month" : {
+
+    },
+    "Previous week" : {
+
+    },
+    "Profile & settings" : {
+
+    },
+    "Profile and settings" : {
+
+    },
+    "Progress" : {
+
+    },
+    "Progress is what you report, not a certification — one session doesn't decide it." : {
+
+    },
+    "Progress set to %@" : {
+
+    },
+    "Progress state" : {
+
+    },
+    "Progress states are what you report, not a certification." : {
+
+    },
+    "Providers" : {
+
+    },
+    "Providers are household contacts — not a referral or medical recommendation." : {
+
+    },
+    "Quiet hours end" : {
+
+    },
+    "Quiet hours start" : {
+
+    },
+    "Raising a puppy,\none day at a time." : {
+
+    },
+    "Record" : {
+
+    },
+    "Record an experience" : {
+
+    },
+    "Record dose" : {
+
+    },
+    "Record how long it took" : {
+
+    },
+    "Record this" : {
+
+    },
+    "Recorded by %@" : {
+
+    },
+    "Recorded by you, for your household. This is a record of what happened — not an assessment of %@." : {
+
+    },
+    "Refused changes were never applied. Review them to decide what to do." : {
+
+    },
+    "Remind me" : {
+
+    },
+    "Reminder" : {
+
+    },
+    "Reminders" : {
+
+    },
+    "Remove" : {
+
+    },
+    "Remove attachment" : {
+
+    },
+    "Remove from the passport" : {
+
+    },
+    "Remove photo" : {
+
+    },
+    "Remove this attachment?" : {
+
+    },
+    "Remove this event?" : {
+
+    },
+    "Remove this from the passport?" : {
+
+    },
+    "Remove this grooming entry?" : {
+
+    },
+    "Remove this milestone?" : {
+
+    },
+    "Remove this note?" : {
+
+    },
+    "Remove this photo?" : {
+
+    },
+    "Remove this provider?" : {
+
+    },
+    "Remove this vaccination?" : {
+
+    },
+    "Remove this weight entry?" : {
+
+    },
+    "Removes this change permanently without applying it" : {
+
+    },
+    "Repeat" : {
+
+    },
+    "Required" : {
+
+    },
+    "Reschedule" : {
+
+    },
+    "Reset your password" : {
+
+    },
+    "Retire goal" : {
+
+    },
+    "Retire this goal" : {
+
+    },
+    "Retire this goal?" : {
+
+    },
+    "Return to PetCompanion, then sign out before opening a password reset link. Your current account has not been changed." : {
+
+    },
+    "Revoke" : {
+
+    },
+    "Revoke it on the members screen and create a new one." : {
+
+    },
+    "Revoke this invitation" : {
+
+    },
+    "Save" : {
+
+    },
+    "Saving task" : {
+
+    },
+    "Schedule" : {
+
+    },
+    "Schedule summary" : {
+
+    },
+    "Search skills" : {
+
+    },
+    "Search time zones" : {
+
+    },
+    "Seed guidance · pending professional review" : {
+
+    },
+    "Selected PDF, %@" : {
+
+    },
+    "Selected photo preview" : {
+
+    },
+    "Session" : {
+
+    },
+    "Settings" : {
+
+    },
+    "Setup couldn't continue" : {
+
+    },
+    "Share invitation link" : {
+
+    },
+    "Share link" : {
+
+    },
+    "shell.preparing_plan" : {
+      "comment" : "Loading copy shown while the main tab shell waits for the first plan snapshot.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing your plan…"
+          }
+        }
+      }
+    },
+    "Short label" : {
+
+    },
+    "Show skills that fit the current stage" : {
+
+    },
+    "Shown exactly as entered" : {
+
+    },
+    "Shows changes the household refused, and lets you discard them" : {
+
+    },
+    "Shows who belongs to this household and any invitations" : {
+
+    },
+    "Sign out" : {
+
+    },
+    "Signed in as" : {
+
+    },
+    "Skills" : {
+
+    },
+    "Skip this task?" : {
+
+    },
+    "Skip without a reason" : {
+
+    },
+    "Skipped tasks remain in history and do not carry over." : {
+
+    },
+    "Small sessions, real progress" : {
+
+    },
+    "Snooze" : {
+
+    },
+    "Snooze changes reminder emphasis only. The task stays due today and remains visible to the household." : {
+
+    },
+    "Snooze until" : {
+
+    },
+    "Snoozed until %@" : {
+
+    },
+    "Socialization" : {
+
+    },
+    "Socialization passport" : {
+
+    },
+    "Source" : {
+
+    },
+    "Start %@" : {
+
+    },
+    "Start %@ first." : {
+
+    },
+    "Status" : {
+
+    },
+    "Step %lld of 3" : {
+
+    },
+    "Stop suggesting %@?" : {
+
+    },
+    "Stop suggesting this…" : {
+
+    },
+    "Stops future reminders and keeps history. This is not medical advice about stopping treatment." : {
+
+    },
+    "Suggest this again" : {
+
+    },
+    "Suggestions only — nothing is recorded until you save." : {
+
+    },
+    "Sync" : {
+
+    },
+    "tab.care" : {
+      "comment" : "Main tab label for the Care hub (weight, providers, medications, etc.).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Care"
+          }
+        }
+      }
+    },
+    "tab.home" : {
+      "comment" : "Main tab label for the Daily Plan home screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Home"
+          }
+        }
+      }
+    },
+    "tab.life" : {
+      "comment" : "Main tab label for the Life milestones timeline.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Life"
+          }
+        }
+      }
+    },
+    "tab.planner" : {
+      "comment" : "Main tab label for the household Planner agenda.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Planner"
+          }
+        }
+      }
+    },
+    "tab.training" : {
+      "comment" : "Main tab label for training goals and the socialization passport.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Training"
+          }
+        }
+      }
+    },
+    "Task date" : {
+
+    },
+    "Tell us about your puppy" : {
+
+    },
+    "That's okay before homecoming. You can add an age later." : {
+
+    },
+    "The entry stays in household history for audit, but won’t show in the list." : {
+
+    },
+    "The event stays in the list as cancelled. You can remove it later." : {
+
+    },
+    "The household history keeps this removal in the audit trail." : {
+
+    },
+    "The link stops working immediately" : {
+
+    },
+    "The link works once and expires in 7 days. You can revoke it at any time before it's used." : {
+
+    },
+    "The memory saves even if the photo upload fails — you can retry later." : {
+
+    },
+    "The note stays. The copy on your device is unchanged." : {
+
+    },
+    "The photo leaves this memory. The copy on your device is unchanged." : {
+
+    },
+    "The task stays in household history. Completed history is never deleted." : {
+
+    },
+    "These changes were refused by the household and were never saved. They will not be tried again." : {
+
+    },
+    "These routines switch on when %@ comes home." : {
+
+    },
+    "These states are what your household reports. They are not a certification, and nothing here is inferred from how often you log sessions." : {
+
+    },
+    "This and future" : {
+
+    },
+    "This app never suggests doubling, skipping, or changing a dose." : {
+
+    },
+    "This connected build can save a dated, anytime task. Time, assignment, reminders, and recurring routines will unlock when Planner sync is connected." : {
+
+    },
+    "This does not advise doubling, skipping, or changing a dose." : {
+
+    },
+    "This invitation was already created, so its link can't be shown again." : {
+
+    },
+    "This link can’t be used" : {
+
+    },
+    "This occurrence only" : {
+
+    },
+    "This should only take a moment." : {
+
+    },
+    "This task is marked required. Skipping is recorded in the household history." : {
+
+    },
+    "Time" : {
+
+    },
+    "Time zone" : {
+
+    },
+    "Time zone, %@" : {
+
+    },
+    "Time: %@" : {
+
+    },
+    "To edit or cancel, open Care → Appointments & events." : {
+
+    },
+    "Today" : {
+
+    },
+    "Too busy today" : {
+
+    },
+    "Training" : {
+
+    },
+    "Try another email" : {
+
+    },
+    "Try syncing now" : {
+
+    },
+    "Type" : {
+
+    },
+    "Undo completion for %@" : {
+
+    },
+    "Unit" : {
+
+    },
+    "Unsupported clinical patterns aren’t approximated — pick a supported schedule or enter a single due date." : {
+
+    },
+    "Update" : {
+
+    },
+    "Use at least %lld characters." : {
+
+    },
+    "Vaccination history is record-keeping, not a schedule or medical advice. Leave next due blank unless your vet gave a date." : {
+
+    },
+    "Vaccinations" : {
+
+    },
+    "View milestone photo" : {
+
+    },
+    "Waiting to sync" : {
+
+    },
+    "We sent a confirmation link to %@. Open it, then return here and sign in." : {
+
+    },
+    "We use broad windows — no exact times needed." : {
+
+    },
+    "We'll say “about %lld weeks”." : {
+
+    },
+    "Weight" : {
+
+    },
+    "Weight & growth" : {
+
+    },
+    "Weight over time in %@" : {
+
+    },
+    "Weight value" : {
+
+    },
+    "What happened or what to remember" : {
+
+    },
+    "What happened?" : {
+
+    },
+    "What needs doing?" : {
+
+    },
+    "Whatever you write here is visible to everyone in the household." : {
+
+    },
+    "When" : {
+
+    },
+    "When does your day run?" : {
+
+    },
+    "Whole household" : {
+
+    },
+    "Why this?" : {
+
+    },
+    "Window" : {
+
+    },
+    "You can still record experiences here, and nothing already recorded is affected." : {
+
+    },
+    "You'll see and share this household's pets, plans, and records. Everything you complete will show your name." : {
+
+    },
+    "You’re already signed in" : {
+
+    },
+    "You're invited" : {
+
+    },
+    "You're reporting what you see. Pausing the goal is a separate action and never changes this." : {
+
+    },
+    "you@example.com" : {
+
+    },
+    "Your account is yours alone. Caregivers join a household by invitation, never by sharing a sign-in." : {
+
+    },
+    "Your logged sessions stay. You can start this skill again later." : {
+
+    },
+    "Your new password is ready. Sign in to continue." : {
+
+    },
+    "Your own observation. PetCompanion doesn't interpret it or grade it." : {
+
+    }
+  },
+  "version" : "1.0"
+}

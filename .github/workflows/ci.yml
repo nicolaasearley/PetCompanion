@@ -1,0 +1,74 @@
+# Backend and TypeScript CI for PetCompanion.
+# Runs on changes to packages/ or supabase/ (iOS-only diffs skip this workflow).
+# iOS unit/UI tests are intentionally local-only — see docs/22-handoff.md §4.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - "packages/**"
+      - "supabase/**"
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "packages/**"
+      - "supabase/**"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install engine dependencies
+        working-directory: packages/engine
+        run: npm ci
+
+      - name: Engine typecheck
+        working-directory: packages/engine
+        run: npm run typecheck
+
+      - name: Engine fixture tests
+        working-directory: packages/engine
+        run: npm test
+
+      - name: Install write-path dependencies
+        working-directory: packages/write-path
+        run: npm ci
+
+      - name: Write-path typecheck
+        working-directory: packages/write-path
+        run: npm run typecheck
+
+  database:
+    name: Supabase SQL suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Postgres
+        run: supabase db start
+
+      - name: Apply migrations and seed
+        run: supabase db reset
+
+      - name: Run SQL test suites
+        run: bash supabase/tests/run.sh

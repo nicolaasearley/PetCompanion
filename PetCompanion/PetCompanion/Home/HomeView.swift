@@ -31,6 +31,13 @@ struct HomeView: View {
                 await viewModel?.refresh()
             }
         }
+        // Realtime publishes into SharedPlanState; this hook covers the case
+        // where Home already has a snapshot and Observation alone would not
+        // re-run verification/stale bookkeeping after a remote replace.
+        .onChange(of: model.planState.reconciliationEpoch) { _, epoch in
+            guard epoch > 0, let viewModel, viewModel.snapshot != nil else { return }
+            viewModel.acknowledgeRemoteReconciliation()
+        }
     }
 }
 
@@ -149,7 +156,7 @@ private struct HomeContentView: View {
                         .foregroundStyle(Color.pc.inkSecondary)
                         .frame(width: PCMetrics.minTouchTarget, height: PCMetrics.minTouchTarget)
                 }
-                .accessibilityLabel("Profile and settings")
+                .accessibilityLabel(PCL10n.Home.profileSettingsAccessibility)
             }
 
             if viewModel.pet != nil, let days = viewModel.daysUntilHomecoming {
@@ -194,6 +201,12 @@ private struct HomeContentView: View {
                 if viewModel.completedExpanded {
                     sectionCards(group.items)
                 }
+            case .needsAttention:
+                // Visual weight follows the plan hierarchy — this section
+                // outranks everything else (doc 09 §3.2), so its header
+                // alone carries the attention tone.
+                SectionHeader(title: group.section.title, tone: .attention)
+                sectionCards(group.items)
             case .today:
                 SectionHeader(title: group.section.title)
                 ForEach(viewModel.windowGroups(for: group.items), id: \.window) { windowGroup in
@@ -245,9 +258,9 @@ private struct HomeContentView: View {
     private var allCaughtUp: some View {
         EmptyStateView(
             systemImage: "checkmark.circle",
-            message: "You're all caught up. Add something to the plan or enjoy the day together.",
+            message: PCL10n.Home.allCaughtUpMessage,
             accent: .success,
-            primaryActionTitle: "Add a task",
+            primaryActionTitle: PCL10n.Home.allCaughtUpAddTask,
             primaryAction: { viewModel.showAddTask = true }
         )
         .padding(.top, PCSpacing.huge)
@@ -298,7 +311,7 @@ private struct HomeContentView: View {
         .padding(PCSpacing.md)
         .background(
             RoundedRectangle(cornerRadius: PCRadius.input, style: .continuous)
-                .fill(Color.pc.attentionBg)
+                .fill(Color.pc.dangerBg)
         )
         .overlay(
             RoundedRectangle(cornerRadius: PCRadius.input, style: .continuous)
@@ -311,7 +324,7 @@ private struct HomeContentView: View {
         Button {
             viewModel.showAddTask = true
         } label: {
-            Label("Add task", systemImage: "plus")
+            Label(PCL10n.Home.quickAddTitle, systemImage: "plus")
                 .font(Font.pc.body.weight(.semibold))
                 .foregroundStyle(Color.pc.onPrimary)
                 .padding(.horizontal, PCSpacing.lg)
@@ -322,7 +335,7 @@ private struct HomeContentView: View {
                 )
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Adds a one-time task to today's plan")
+        .accessibilityHint(PCL10n.Home.quickAddAccessibilityHint)
     }
 }
 

@@ -88,6 +88,7 @@ via the `R-PREP-*` rules in §9. Category `preparation` throughout.
 | `prep.travel_plan` | Plan the journey home (crate/restraint, stops, towels) | short | 5–1 days |
 | `prep.name_shortlist` | Settle the name the whole household will use | tiny | any time |
 | `prep.first_days_calendar` | Keep the first 2–3 days at home low-key — block the calendar | tiny | 7–1 days |
+| `prep.gather_records_questions` | Gather records and questions (before a confirmed vet appointment) | short | event lead window (`rule.event_prep_vet`) |
 
 ## 6. Routine templates
 
@@ -172,7 +173,7 @@ engine §12.3.
 | `rule.brushing` | brushing session | stage settling_in+ | 3 days (coat-typical default; household-adjustable) | "A brief brushing session keeps {Puppy} comfortable with grooming." |
 | `rule.alone_time` | alone-time practice | goal active or stage ≤ foundations | 2 days | "Short, easy departures now help {Puppy} feel fine alone later." |
 | `rule.growth_photo` | weekly growth photo | opt-in (P2); tier P4 | 7 days | "It's been a week — a quick photo keeps {Puppy}'s growth story going." |
-| `rule.event_prep_vet` | `Gather records and questions` before a vet appointment | vet-kind Event within 3 days | once per event | "{Puppy}'s appointment is {when} — having records and questions ready helps." (origin `system_preparation_rule`, tier P2) |
+| `rule.event_prep_vet` | `prep.gather_records_questions` (`Gather records and questions`) before a vet appointment | vet-kind Event within 3 days | once per event | "{Puppy}'s appointment is {when} — having records and questions ready helps." (origin `system_preparation_rule`, tier P2) |
 | `rule.homecoming_routine` | confirm household routine | homecoming is today/tomorrow | once | "{Puppy} is almost home — a shared routine makes the first week calmer." |
 
 Engine-behavior notes: `rule.active_skill_practice` competes normally — active
@@ -202,7 +203,11 @@ household-editable and none is presented as a health requirement:
    the household can adjust cadences manually meanwhile.
 3. Lesson long-copy authoring (steps, tips per §7) — content-design task;
    spec here is the acceptance baseline.
-4. Whether `rule.growth_photo` ships in MVP or with P2 journal work.
+4. ~~Whether `rule.growth_photo` ships in MVP or with P2 journal work.~~
+   **Resolved (2026-07-29):** stays **out of MVP**; ship with **P2 journal /
+   US-095**. Engine must not add it to `SUPPORTED_RULES` until a real opt-in
+   preference exists (none today — see `docs/22` §7). Seeded catalogue row
+   remains for forward compatibility.
 5. Localization: seed is English-only; locale fields exist in the model.
 
 ## 12. Validation criteria

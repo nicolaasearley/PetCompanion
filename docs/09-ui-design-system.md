@@ -67,6 +67,7 @@ Semantic tokens only — components never reference raw hex values.
 | `color.success` | `#3E7A5E` | Completion confirmations |
 | `color.info` | `#4E6E8E` | Upcoming/informational accents (slate) |
 | `color.danger` | `#9E3B2E` | True failures and destructive actions only |
+| `color.danger-bg` | `#FBE7E2` | True-failure banner/card tint |
 
 ### 4.2 Dark mode
 
@@ -74,9 +75,9 @@ Same token names; values: `bg #17140F`, `surface #201C15`,
 `surface-subtle #2A251C`, `ink #F3EFE7`, `ink-secondary #BFB7A8`,
 `border #3A342A`, `primary #7FB5A4`, `on-primary #17140F`,
 `attention #E08A6D`, `attention-bg #3A251D`, `success #8CC0A6`,
-`info #93AEC7`, `danger #E0796A`, `accent #D9A85C`, `ink-tertiary #8A8172`
-(shared with light), `primary-pressed #6BA292`. Dark mode ships with the
-MVP (platform-following, no in-app override initially).
+`info #93AEC7`, `danger #E0796A`, `danger-bg #3B231D`, `accent #D9A85C`,
+`ink-tertiary #8A8172` (shared with light), `primary-pressed #6BA292`. Dark
+mode ships with the MVP (platform-following, no in-app override initially).
 
 ### 4.3 Color rules
 
@@ -88,6 +89,21 @@ MVP (platform-following, no in-app override initially).
   color until they enter Needs attention.
 - `accent` is decorative (chips, illustration fills); never sole carrier of
   meaning, never body text.
+- `attention-bg` and `danger-bg` are not interchangeable: `attention-bg`
+  marks something in the plan that needs the caregiver's eyes (still true,
+  still actionable, never a failure); `danger-bg` marks a write or load that
+  actually failed. A true-failure banner (e.g. Home's inline error, the
+  socialization save/remove banner) fills with `danger-bg`, never
+  `attention-bg` — the two read as the same muted terracotta family at a
+  glance, and conflating them told a caregiver a failure was merely a
+  to-do (doc 22 §7).
+- `info` is also the truthful-queued/offline tone, not `success` or
+  `danger`: a write that only reached the on-device durable queue
+  (`OfflineMutationError.queued`) is real and non-losable but not yet
+  server-confirmed, so it must not read as a green "done" or a red
+  "failed". `PlanItemCard`'s queued chip and `SocializationBanner`'s
+  `.queued` tone both use `info` (slate) with the sync-in-progress glyph
+  (`arrow.triangle.2.circlepath`) for exactly this state.
 
 ## 5. Typography
 
@@ -136,8 +152,11 @@ The product's centerpiece (HM-01).
   ~200 ms); **completed** (title stays full-contrast, check filled
   `success`, meta shows attribution — no strikethrough, completion is an
   achievement not a deletion); **queued** (small "queued" chip, `info`);
-  needs-attention variant (`attention-bg` tint, `attention` leading icon,
-  4pt leading bar); disabled/stale.
+  needs-attention variant (`attention-bg` tint, `attention` leading icon set
+  in a small surface-colored disc for presence); disabled/stale. A leading
+  accent bar was tried and dropped (2026-07-29 visual refresh) — a
+  side-stripe reads as a decorative tell, and tint plus icon alone already
+  carry the state without a third redundant cue.
 - Recommendation variant adds the explanation affordance and never shows a
   checkbox pre-accepted — its primary tap opens HM-02/HM-03; accepting is
   explicit.
@@ -154,6 +173,10 @@ screen.
 
 Small-caps label (`type.heading` treatment), `ink-secondary`, with optional
 trailing action ("Adjust", "▾"). Rendered as a real accessibility heading.
+The "Needs attention" header renders in `attention` instead — the one
+section that outranks the rest of the plan hierarchy (§3.2) gets the one
+extra cue; every other header stays neutral so this remains reinforcement,
+not a second accent competing with it.
 
 ### 7.4 Sheets
 
@@ -174,6 +197,39 @@ Standard 56pt rows with chevrons for navigation lists (Care, Settings).
 Inputs: 12pt radius, `border` outline, `primary` focus ring, label above,
 error text below in `danger` with icon (never color-only). Radio groups per
 ON-07 with whole-row targets.
+
+**Promoted row (hero tile).** When one navigation row genuinely leads a
+screen (e.g. Training's socialization passport, 2026-07-29), it stays the
+same `surface` background as an ordinary row or card — never a full-bleed
+saturated fill, which would break the One Accent Rule and the "giant
+saturated block" anti-reference. Promotion instead comes from: screen
+position (first, ahead of everything else), a `type.body` **semibold**
+title instead of the row default, one explanatory `type.secondary` line
+underneath (what an ordinary chevron row doesn't carry), and a
+`primary`-tinted 1.25pt border (`primary` at ~30% opacity) replacing the
+neutral `border` stroke. The leading icon keeps the existing icon-disc
+language (`surfaceSubtle` circle, `primary` glyph) rather than inventing a
+new one.
+
+### 7.6a Training progress state bar (owner-reported)
+
+Accepted 2026-07-29 (closes docs/22 §5 item 2). Training goal cards, the
+skill lesson, and progress history may show a calm segmented bar for
+`TrainingProgressState`. Rules:
+
+- The bar maps the household's **own reported** continuum state to discrete
+  steps (Not started → Maintained). It is **not** a completion percentage,
+  module score, or session-count ratio (`PRODUCT.md` unexplained-scores ban;
+  F08).
+- The current state **name is always visible text**; color only reinforces
+  filled steps (same rule as obligation classes in §4.3).
+- Caption reads “Owner-reported · not a score” (or the paused variant).
+- F08's seventh label, “Paused”, stays a goal lifecycle status: when paused,
+  the title prefixes “Paused · …” and the continuum step does not move.
+- Tokens only: `primary` / `primary` at reduced opacity for reached steps,
+  `surfaceSubtle` + `border` for unreached, `Font.pc` for Dynamic Type,
+  platform light/dark via `Color.pc`.
+- Socialization (F09) still forbids progress bars and ratios entirely.
 
 ### 7.7 Empty states
 

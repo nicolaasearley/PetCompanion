@@ -20,6 +20,19 @@ supabase/.branches/
 .env.*
 !.env.example
 
+# Apple Push / APNs signing keys — never commit
+*.p8
+AuthKey_*.p8
+**/AuthKey_*.p8
+
 # Claude Code — machine-local settings and agent worktrees
 .claude/settings.local.json
 .claude/worktrees/
+
+# Ad hoc XCUITest review-harness screenshots copied out of /tmp for a
+# durable, workspace-local copy (see PetCompanionUITests/README.md). Not
+# build output, not app code — never meant to be committed.
+.review-artifacts/
+
+# Local Supabase CLI home used by ad-hoc scripts — never commit
+.tmp-home/

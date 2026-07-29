@@ -27,8 +27,11 @@ struct PlanItemCard: View {
     let title: String
     var meta: String? = nil
     var state: CardState = .normal
-    /// Needs-attention variant: `attention-bg` tint, `attention` leading
-    /// icon, 4pt leading bar. Orthogonal to `state`.
+    /// Needs-attention variant: `attention-bg` tint and an `attention`
+    /// leading icon. Orthogonal to `state`. The icon carries a small
+    /// surface-colored disc behind it rather than a leading accent bar —
+    /// two cues (tint + icon) is enough weight for a calm interface; a third
+    /// stripe was redundant emphasis (doc 09 §7.1).
     var isNeedsAttention: Bool = false
     /// Recommendation cards never show a checkbox pre-accepted; their
     /// primary tap opens the explanation. Accepting is explicit.
@@ -66,16 +69,6 @@ struct PlanItemCard: View {
             RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
                 .strokeBorder(Color.pc.border, lineWidth: 1)
         )
-        .overlay(alignment: .leading) {
-            if isNeedsAttention {
-                UnevenRoundedRectangle(
-                    topLeadingRadius: PCRadius.card,
-                    bottomLeadingRadius: PCRadius.card
-                )
-                .fill(Color.pc.attention)
-                .frame(width: 4)
-            }
-        }
         .opacity(isDisabled ? 0.55 : 1)
     }
 
@@ -128,6 +121,21 @@ struct PlanItemCard: View {
         }
     }
 
+    /// A small surface-colored disc behind the exclamation glyph — the same
+    /// soft "icon avatar" language as the Home header's pet indicator,
+    /// giving the cue enough presence to replace the removed leading bar
+    /// without introducing a second full-size circle next to the checkbox.
+    private var attentionIcon: some View {
+        ZStack {
+            Circle().fill(Color.pc.surface)
+            Image(systemName: "exclamationmark")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color.pc.attention)
+        }
+        .frame(width: 22, height: 22)
+        .accessibilityHidden(true)
+    }
+
     // MARK: - Row
 
     private var rowContent: some View {
@@ -137,10 +145,7 @@ struct PlanItemCard: View {
             VStack(alignment: .leading, spacing: PCSpacing.xs) {
                 HStack(spacing: PCSpacing.sm) {
                     if isNeedsAttention {
-                        Image(systemName: "exclamationmark.circle")
-                            .font(Font.pc.body)
-                            .foregroundStyle(Color.pc.attention)
-                            .accessibilityHidden(true)
+                        attentionIcon
                     }
                     Text(title)
                         .font(Font.pc.body)

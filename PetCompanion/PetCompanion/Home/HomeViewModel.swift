@@ -118,6 +118,13 @@ final class HomeViewModel {
         }
     }
 
+    /// SharedPlanState already holds the remote snapshot; refresh local
+    /// verification bookkeeping so SyncStatus stays truthful.
+    func acknowledgeRemoteReconciliation() {
+        updateVerificationState()
+        errorMessage = nil
+    }
+
     func retryInitialLoad() {
         Task { await loadInitial() }
     }

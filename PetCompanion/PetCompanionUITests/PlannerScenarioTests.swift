@@ -15,34 +15,33 @@ final class PlannerScenarioTests: ReviewScenarioCase {
             return
         }
         guard driver.waitForScreen(
-            [app.buttons["Today"], app.staticTexts["Planner"]],
+            [app.staticTexts["This week"], app.staticTexts["Planner"], app.buttons["Today"]],
             describedAs: "PL-01 Planner"
         ) else {
             driver.capture("planner-did-not-load")
             return
         }
 
-        driver.capture("planner-today")
+        driver.capture("planner-agenda")
         driver.recordRenderedTextScale(
             probe: app.staticTexts["Planner"],
             describedAs: "Planner navigation title"
         )
 
-        navigateDays()
+        navigateWeeks()
         openTaskDetail()
         openMonthJump()
     }
 
-    /// The week navigator: forward a week, back to today.
-    private func navigateDays() {
+    /// The week navigator: forward a week, back toward today.
+    private func navigateWeeks() {
         if driver.tap(app.buttons["Next week"], describedAs: "Next week") {
             driver.capture("planner-next-week")
         }
         if driver.tap(app.buttons["Previous week"], describedAs: "Previous week") {
-            driver.capture("planner-back-to-this-week")
+            driver.capture("planner-back-toward-today")
         }
-        // "Today" is disabled while today is already selected, so this only
-        // does anything after the navigation above moved off it.
+        // "Today" re-anchors the forward window after week jumps.
         driver.tap(app.buttons["Today"], describedAs: "Today")
     }
 

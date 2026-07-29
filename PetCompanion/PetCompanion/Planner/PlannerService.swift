@@ -4,6 +4,9 @@ import Foundation
 protocol PlannerService: AnyObject {
     func context() async throws -> PlannerContext
     func agenda(on date: Date) async throws -> PlannerDayAgenda
+    /// Inclusive multi-day agenda in the household calendar. Empty local days
+    /// are still returned so PL-01 can render honest empties.
+    func agenda(from start: Date, through end: Date) async throws -> [PlannerDayAgenda]
     func history(for item: PlannerAgendaItem) async throws -> [PlannerHistoryEntry]
     func save(
         _ draft: PlannerTaskDraft,
@@ -113,6 +116,15 @@ final class PlanServicePlannerAdapter: PlannerService {
             lastVerifiedAt: snapshot.servedFromCacheAt ?? snapshot.plan.generatedAt,
             isStale: snapshot.servedFromCacheAt != nil
         )
+    }
+
+    func agenda(from start: Date, through end: Date) async throws -> [PlannerDayAgenda] {
+        let calendar = model.household?.clock.calendar ?? .current
+        var result: [PlannerDayAgenda] = []
+        for day in PlannerAgendaGrouping.dayStarts(from: start, through: end, calendar: calendar) {
+            result.append(try await agenda(on: day))
+        }
+        return result
     }
 
     func history(for item: PlannerAgendaItem) async throws -> [PlannerHistoryEntry] {
@@ -343,6 +355,8 @@ final class InMemoryPlannerService: PlannerService {
         )
         let breakfastId = UUID()
         let brushId = UUID()
+        let vetPrepId = UUID()
+        let dayAfter = calendar.date(byAdding: .day, value: 2, to: date) ?? date
         let items = [
             PlannerAgendaItem(
                 id: breakfastId,
@@ -386,7 +400,32 @@ final class InMemoryPlannerService: PlannerService {
                 completionAttribution: nil,
                 snoozedUntil: nil
             ),
+            PlannerAgendaItem(
+                id: vetPrepId,
+                planItemId: nil,
+                occurrenceId: vetPrepId,
+                scheduleId: nil,
+                title: "Bring health records",
+                petId: pet.id,
+                petName: pet.name,
+                date: dayAfter,
+                time: .exact(
+                    calendar.date(bySettingHour: 14, minute: 0, second: 0, of: dayAfter) ?? dayAfter
+                ),
+                recurrence: .once,
+                assignment: .anyone,
+                reminder: .oneHourBefore,
+                notes: "",
+                state: .pending,
+                obligationClass: .scheduled,
+                origin: .userCreated,
+                revision: 1,
+                completionAttribution: nil,
+                snoozedUntil: nil
+            ),
         ]
+        // Deliberately leave tomorrow empty so the forward agenda shows an
+        // inline empty-day add between today and the day-after prep task.
         return InMemoryPlannerService(context: context, items: items)
     }
 
@@ -407,6 +446,15 @@ final class InMemoryPlannerService: PlannerService {
             lastVerifiedAt: .now,
             isStale: false
         )
+    }
+
+    func agenda(from start: Date, through end: Date) async throws -> [PlannerDayAgenda] {
+        let calendar = plannerContext.calendar
+        var result: [PlannerDayAgenda] = []
+        for day in PlannerAgendaGrouping.dayStarts(from: start, through: end, calendar: calendar) {
+            result.append(try await agenda(on: day))
+        }
+        return result
     }
 
     func history(for item: PlannerAgendaItem) async throws -> [PlannerHistoryEntry] {

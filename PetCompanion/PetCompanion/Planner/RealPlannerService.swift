@@ -101,19 +101,40 @@ final class RealPlannerService: PlannerService {
     }
 
     func agenda(on date: Date) async throws -> PlannerDayAgenda {
+        let days = try await agenda(from: date, through: date)
+        guard let day = days.first else {
+            let calendar = model.household?.clock.calendar ?? .current
+            return PlannerDayAgenda(
+                date: calendar.startOfDay(for: date),
+                items: [],
+                lastVerifiedAt: nil,
+                isStale: false,
+                coverage: .notGenerated
+            )
+        }
+        return day
+    }
+
+    func agenda(from start: Date, through end: Date) async throws -> [PlannerDayAgenda] {
         guard let household = model.household else {
             throw PlannerServiceError.unavailable("Your household could not be loaded.")
         }
         // Optimistic rows and badges only survive while their operation does.
         queuedWork.settle(against: operationQueue.operations)
         let calendar = household.clock.calendar
-        let dateString = SupabaseCoding.dateOnlyString(date, timeZone: calendar.timeZone)
+        let dayStarts = PlannerAgendaGrouping.dayStarts(from: start, through: end, calendar: calendar)
+        guard let first = dayStarts.first, let last = dayStarts.last else { return [] }
+
+        let startString = SupabaseCoding.dateOnlyString(first, timeZone: calendar.timeZone)
+        let endString = SupabaseCoding.dateOnlyString(last, timeZone: calendar.timeZone)
 
         let response = try await client
             .from("task_occurrences")
             .select()
             .eq("household_id", value: household.id)
-            .eq("local_due_date", value: dateString)
+            .gte("local_due_date", value: startString)
+            .lte("local_due_date", value: endString)
+            .order("local_due_date")
             .order("due_time", nullsFirst: false)
             .order("occurrence_key")
             .execute()
@@ -133,8 +154,11 @@ final class RealPlannerService: PlannerService {
         let petNames = Dictionary(uniqueKeysWithValues: pets.map { ($0.id, $0.name) })
         let dispositions = try await readDispositions(occurrenceIds: rows.map(\.id))
 
-        var items = rows.map { row in
-            map(
+        var itemsByDay: [Date: [PlannerAgendaItem]] = Dictionary(
+            uniqueKeysWithValues: dayStarts.map { ($0, []) }
+        )
+        for row in rows {
+            let item = map(
                 row: row,
                 schedule: row.scheduleId.flatMap { id in schedules.first { $0.id == id } },
                 title: row.titleOverride
@@ -144,18 +168,28 @@ final class RealPlannerService: PlannerService {
                 dispositions: dispositions.filter { $0.occurrenceId == row.id },
                 calendar: calendar
             )
+            let day = calendar.startOfDay(for: item.date)
+            itemsByDay[day, default: []].append(item)
         }
-        items.append(contentsOf: queuedWork.placeholderItems(on: date, calendar: calendar))
-        items.sort(by: agendaSort)
-        knownItems.merge(Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })) {
-            _, newest in newest
+
+        var days: [PlannerDayAgenda] = []
+        for day in dayStarts {
+            var items = itemsByDay[day] ?? []
+            items.append(contentsOf: queuedWork.placeholderItems(on: day, calendar: calendar))
+            items.sort(by: agendaSort)
+            knownItems.merge(Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })) {
+                _, newest in newest
+            }
+            days.append(
+                PlannerDayAgenda(
+                    date: day,
+                    items: items,
+                    lastVerifiedAt: .now,
+                    isStale: false
+                )
+            )
         }
-        return PlannerDayAgenda(
-            date: calendar.startOfDay(for: date),
-            items: items,
-            lastVerifiedAt: .now,
-            isStale: false
-        )
+        return days
     }
 
     func history(for item: PlannerAgendaItem) async throws -> [PlannerHistoryEntry] {

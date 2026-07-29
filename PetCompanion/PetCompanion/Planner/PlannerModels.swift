@@ -318,7 +318,74 @@ struct PlannerAgendaItem: Identifiable, Equatable, Sendable {
     }
 }
 
-struct PlannerDayAgenda: Equatable, Sendable {
+/// Agenda projection of a household Event for PL-01 / US-080.
+///
+/// Distinct from `PlannerAgendaItem`: events are commitments, not completable
+/// task occurrences. Source records still live in Care → Appointments.
+struct PlannerAgendaEvent: Identifiable, Equatable, Sendable {
+    let id: UUID
+    var kind: EventKind
+    var title: String
+    var petId: UUID?
+    var petName: String?
+    var date: Date
+    var startTime: String?
+    var allDay: Bool
+    var locationText: String?
+    var notes: String?
+    var status: EventStatus
+    var revision: Int
+
+    var isCancelled: Bool { status == .cancelled }
+
+    var timeSummary: String {
+        if allDay || startTime == nil { return "All day" }
+        return EventCoding.displayClock(startTime!)
+    }
+
+    static func from(
+        _ event: HouseholdEvent,
+        petName: String?,
+        calendar: Calendar
+    ) -> PlannerAgendaEvent {
+        PlannerAgendaEvent(
+            id: event.id,
+            kind: event.kind,
+            title: event.title,
+            petId: event.petId,
+            petName: petName,
+            date: calendar.startOfDay(for: event.startDate),
+            startTime: event.startTime,
+            allDay: event.allDay,
+            locationText: event.locationText,
+            notes: event.notes,
+            status: event.status,
+            revision: event.revision
+        )
+    }
+}
+
+/// One visible row in a day section — task occurrence or calendar event.
+enum PlannerAgendaEntry: Identifiable, Equatable, Sendable {
+    case occurrence(PlannerAgendaItem)
+    case event(PlannerAgendaEvent)
+
+    var id: UUID {
+        switch self {
+        case .occurrence(let item): item.id
+        case .event(let event): event.id
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .occurrence(let item): item.title
+        case .event(let event): event.title
+        }
+    }
+}
+
+struct PlannerDayAgenda: Equatable, Sendable, Identifiable {
     /// How much this agenda is able to say about its day.
     ///
     /// "Nothing is scheduled" and "nobody knows what was scheduled" are
@@ -337,17 +404,282 @@ struct PlannerDayAgenda: Equatable, Sendable {
 
     var date: Date
     var items: [PlannerAgendaItem]
+    /// Confirmed household events for this local day (US-080). Independent of
+    /// plan coverage — an unplanned day can still hold appointments.
+    var events: [PlannerAgendaEvent] = []
     var lastVerifiedAt: Date?
     var isStale: Bool
     var coverage: Coverage = .planned
 
+    var id: Date { date }
+
+    var hasContent: Bool { !items.isEmpty || !events.isEmpty }
+
     /// Calm, specific copy for a day the app cannot describe — never an
     /// error state, because nothing failed (doc 09 §10).
+    ///
+    /// Suppressed when the day already has events: appointments are real
+    /// content even when the Daily Plan has not been generated yet.
     func unplannedDayMessage(today: Date, calendar: Calendar) -> String? {
-        guard coverage == .notGenerated else { return nil }
+        guard coverage == .notGenerated, events.isEmpty else { return nil }
         return calendar.startOfDay(for: date) > calendar.startOfDay(for: today)
             ? "This day hasn't been planned yet. Its plan is prepared when the day begins."
             : "No plan was kept for this day, so PetCompanion can't say what was scheduled."
+    }
+}
+
+/// Pure date/window helpers for PL-01's forward-scrolling agenda. Kept free of
+/// store/UI so household-calendar grouping can be unit-tested without spinning
+/// up a service.
+enum PlannerAgendaGrouping {
+    /// Initial forward window from the anchor day (today by default).
+    static let defaultForwardDayCount = 14
+    /// How many days to append when the caregiver scrolls near the end.
+    static let pageDayCount = 7
+
+    /// Inclusive local-day starts from `start` through `end` in `calendar`.
+    static func dayStarts(
+        from start: Date,
+        through end: Date,
+        calendar: Calendar
+    ) -> [Date] {
+        let first = calendar.startOfDay(for: start)
+        let last = calendar.startOfDay(for: end)
+        guard first <= last else { return [] }
+        var days: [Date] = []
+        var cursor = first
+        while cursor <= last {
+            days.append(cursor)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return days
+    }
+
+    /// End of a forward window that begins on `start` and spans `dayCount`
+    /// local days (count includes the start day).
+    static func windowEnd(
+        from start: Date,
+        dayCount: Int,
+        calendar: Calendar
+    ) -> Date {
+        let clamped = max(dayCount, 1)
+        return calendar.date(
+            byAdding: .day,
+            value: clamped - 1,
+            to: calendar.startOfDay(for: start)
+        ) ?? calendar.startOfDay(for: start)
+    }
+
+    /// Whether the day is before the household's local today — previous days
+    /// are history (PL-01 pull-past), so inline add stays off them.
+    static func isPastDay(_ date: Date, today: Date, calendar: Calendar) -> Bool {
+        calendar.startOfDay(for: date) < calendar.startOfDay(for: today)
+    }
+
+    static func allowsInlineAdd(on date: Date, today: Date, calendar: Calendar) -> Bool {
+        !isPastDay(date, today: today, calendar: calendar)
+    }
+
+    /// Day section heading before `SectionHeader` uppercases it
+    /// (`TODAY · WED JUL 29` / `THU JUL 30`).
+    static func sectionHeading(for date: Date, today: Date, calendar: Calendar) -> String {
+        PlannerFormatters.agendaSection(date, today: today, calendar: calendar)
+    }
+
+    /// Week-rail title: "This week" while the anchor stays in the current
+    /// household week; otherwise a short inclusive range.
+    static func weekNavigatorTitle(
+        for anchor: Date,
+        today: Date,
+        calendar: Calendar
+    ) -> String {
+        if calendar.isDate(anchor, equalTo: today, toGranularity: .weekOfYear) {
+            return "This week"
+        }
+        let start = calendar.dateInterval(of: .weekOfYear, for: anchor)?.start
+            ?? calendar.startOfDay(for: anchor)
+        let end = calendar.date(byAdding: .day, value: 6, to: start) ?? start
+        return PlannerFormatters.weekRange(from: start, through: end, calendar: calendar)
+    }
+
+    /// Merge a fetched page into an existing ordered day list without
+    /// duplicating local days. Newer fetch wins for a matching day.
+    /// Incoming task pages replace the day's items/coverage; events are
+    /// reattached afterward via `attaching(events:to:calendar:)`.
+    static func merging(
+        _ existing: [PlannerDayAgenda],
+        with incoming: [PlannerDayAgenda],
+        calendar: Calendar
+    ) -> [PlannerDayAgenda] {
+        var byDay: [Date: PlannerDayAgenda] = [:]
+        for day in existing {
+            byDay[calendar.startOfDay(for: day.date)] = day
+        }
+        for day in incoming {
+            let key = calendar.startOfDay(for: day.date)
+            var merged = day
+            // Preserve already-attached events until the next attach pass
+            // rewrites the full window (avoids a blank flash mid-merge).
+            if merged.events.isEmpty, let prior = byDay[key]?.events, !prior.isEmpty {
+                merged.events = prior
+            }
+            byDay[key] = merged
+        }
+        return byDay.keys.sorted().compactMap { byDay[$0] }
+    }
+
+    /// Place confirmed events onto matching local-day sections inside the
+    /// visible window. Cancelled events stay off the agenda (US-080).
+    static func attaching(
+        events: [PlannerAgendaEvent],
+        to days: [PlannerDayAgenda],
+        calendar: Calendar
+    ) -> [PlannerDayAgenda] {
+        guard let first = days.first, let last = days.last else { return days }
+        let windowStart = calendar.startOfDay(for: first.date)
+        let windowEnd = calendar.startOfDay(for: last.date)
+
+        var byDay: [Date: [PlannerAgendaEvent]] = [:]
+        for event in events where !event.isCancelled {
+            let day = calendar.startOfDay(for: event.date)
+            guard day >= windowStart, day <= windowEnd else { continue }
+            byDay[day, default: []].append(event)
+        }
+
+        return days.map { day in
+            var copy = day
+            let key = calendar.startOfDay(for: day.date)
+            copy.events = (byDay[key] ?? []).sorted { lhs, rhs in
+                entrySortKey(.event(lhs), calendar: calendar)
+                    < entrySortKey(.event(rhs), calendar: calendar)
+            }
+            return copy
+        }
+    }
+
+    /// Local-day starts that already carry tasks and/or confirmed events —
+    /// shared by the week-rail dots and the month-jump grid.
+    static func datesWithContent(
+        from days: [PlannerDayAgenda],
+        calendar: Calendar
+    ) -> Set<Date> {
+        Set(
+            days
+                .filter(\.hasContent)
+                .map { calendar.startOfDay(for: $0.date) }
+        )
+    }
+
+    /// Confirmed (non-cancelled) event day starts inside an inclusive local
+    /// range. Used when the month-jump sheet fetches a month outside the
+    /// currently loaded agenda window.
+    static func eventContentDates(
+        from events: [PlannerAgendaEvent],
+        from start: Date,
+        through end: Date,
+        calendar: Calendar
+    ) -> Set<Date> {
+        let windowStart = calendar.startOfDay(for: start)
+        let windowEnd = calendar.startOfDay(for: end)
+        var dates = Set<Date>()
+        for event in events where !event.isCancelled {
+            let day = calendar.startOfDay(for: event.date)
+            guard day >= windowStart, day <= windowEnd else { continue }
+            dates.insert(day)
+        }
+        return dates
+    }
+
+    /// Inclusive local start/end for the month containing `month`.
+    static func monthBounds(
+        for month: Date,
+        calendar: Calendar
+    ) -> (start: Date, end: Date)? {
+        guard let interval = calendar.dateInterval(of: .month, for: month) else {
+            return nil
+        }
+        let start = calendar.startOfDay(for: interval.start)
+        let end = calendar.date(byAdding: .day, value: -1, to: interval.end)
+            .map { calendar.startOfDay(for: $0) } ?? start
+        return (start, end)
+    }
+
+    /// Seven-column month cells aligned to `calendar.firstWeekday`. Leading
+    /// and trailing `nil` pads keep the grid rectangular for the jump sheet.
+    static func monthGridDays(
+        for month: Date,
+        calendar: Calendar
+    ) -> [Date?] {
+        guard let bounds = monthBounds(for: month, calendar: calendar) else {
+            return []
+        }
+        let weekday = calendar.component(.weekday, from: bounds.start)
+        let leading = (weekday - calendar.firstWeekday + 7) % 7
+        var cells: [Date?] = Array(repeating: nil, count: leading)
+        var cursor = bounds.start
+        while cursor <= bounds.end {
+            cells.append(cursor)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
+                break
+            }
+            cursor = next
+        }
+        while cells.count % 7 != 0 {
+            cells.append(nil)
+        }
+        return cells
+    }
+
+    /// Weekday column labels in calendar order (narrow width), matching the
+    /// month-jump grid columns.
+    static func monthWeekdaySymbols(calendar: Calendar) -> [String] {
+        let symbols = calendar.veryShortWeekdaySymbols
+        guard !symbols.isEmpty else { return [] }
+        let offset = calendar.firstWeekday - 1
+        return (0..<7).map { symbols[($0 + offset) % symbols.count] }
+    }
+
+    /// Mixed day-section rows: timed events and exact-time tasks first, then
+    /// windowed tasks, then anytime / all-day. Title breaks ties.
+    static func entries(
+        for day: PlannerDayAgenda,
+        calendar: Calendar
+    ) -> [PlannerAgendaEntry] {
+        let mixed: [PlannerAgendaEntry] =
+            day.items.map(PlannerAgendaEntry.occurrence)
+            + day.events.map(PlannerAgendaEntry.event)
+        return mixed.sorted { lhs, rhs in
+            let left = entrySortKey(lhs, calendar: calendar)
+            let right = entrySortKey(rhs, calendar: calendar)
+            if left != right { return left < right }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    /// Minutes-from-midnight sort key. Exact clocks and event start times
+    /// occupy 0…1439; windows and anytime/all-day sort after.
+    static func entrySortKey(_ entry: PlannerAgendaEntry, calendar: Calendar) -> Int {
+        switch entry {
+        case .occurrence(let item):
+            switch item.time {
+            case .exact(let date):
+                return calendar.component(.hour, from: date) * 60
+                    + calendar.component(.minute, from: date)
+            case .window(let window):
+                return 1_500 + (PlanTimeWindow.allCases.firstIndex(of: window) ?? 0)
+            case .anytime:
+                return 2_000
+            }
+        case .event(let event):
+            if event.allDay || event.startTime == nil { return 2_000 }
+            let parts = event.startTime!.split(separator: ":")
+            guard parts.count >= 2,
+                  let hour = Int(parts[0]),
+                  let minute = Int(parts[1])
+            else { return 2_000 }
+            return hour * 60 + minute
+        }
     }
 }
 
@@ -431,6 +763,22 @@ enum PlannerFormatters {
             return "Tomorrow"
         }
         return day(date, calendar: calendar)
+    }
+
+    /// PL-01 day-section label before uppercasing: today keeps an explicit
+    /// "Today · …" lead-in; other days stay weekday + month day.
+    static func agendaSection(_ date: Date, today: Date, calendar: Calendar) -> String {
+        let stamped = day(date, calendar: calendar)
+        if calendar.isDate(date, inSameDayAs: today) {
+            return "Today · \(stamped)"
+        }
+        return stamped
+    }
+
+    static func weekRange(from start: Date, through end: Date, calendar: Calendar) -> String {
+        let left = formatter(calendar: calendar, template: "MMM d").string(from: start)
+        let right = formatter(calendar: calendar, template: "MMM d").string(from: end)
+        return "\(left) – \(right)"
     }
 
     private static func formatter(calendar: Calendar, template: String) -> DateFormatter {

@@ -1,0 +1,27 @@
+{
+  "scenario": "vet appointment beyond the 3-day lead window does not yield event prep",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 6,
+  "pet": {
+    "name": "Pip",
+    "birth_info": { "kind": "exact", "birth_date": "2026-05-28" }
+  },
+  "events": [
+    {
+      "event_id": "vet-next-week",
+      "title": "Veterinary appointment",
+      "kind": "vet_appointment",
+      "local_date": "2026-08-10",
+      "exact_time": "14:00",
+      "confirmed": true
+    }
+  ],
+  "expect": {
+    "absent_content_ids": ["prep.gather_records_questions"],
+    "sections": {
+      "coming_up": ["Veterinary appointment"]
+    },
+    "no_duplicates": true
+  }
+}

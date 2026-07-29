@@ -204,6 +204,12 @@ export interface HistoryEntry {
   rule_content_id?: string;
   category: Category;
   socialization_category?: string;
+  /**
+   * Set when history came from an event-scoped recommendation (e.g.
+   * `rule.event_prep_vet`). Lets `each_event: once` frequency caps key off the
+   * calendar event rather than the shared prep content id.
+   */
+  event_id?: string;
   outcome: "completed" | "skipped" | "dismissed" | "expired" | "shown";
 }
 

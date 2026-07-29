@@ -1,0 +1,36 @@
+{
+  "scenario": "cancelled or unconfirmed vet events do not yield event prep",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 6,
+  "pet": {
+    "name": "Pip",
+    "birth_info": { "kind": "exact", "birth_date": "2026-05-28" }
+  },
+  "events": [
+    {
+      "event_id": "vet-cancelled",
+      "title": "Veterinary appointment",
+      "kind": "vet_appointment",
+      "local_date": "2026-08-08",
+      "exact_time": "14:00",
+      "confirmed": false
+    },
+    {
+      "event_id": "class-soon",
+      "title": "Puppy class",
+      "kind": "class",
+      "local_date": "2026-08-07",
+      "exact_time": "18:00",
+      "confirmed": true
+    }
+  ],
+  "expect": {
+    "absent_content_ids": ["prep.gather_records_questions"],
+    "absent_titles": ["Gather records and questions", "Veterinary appointment"],
+    "sections": {
+      "coming_up": ["Puppy class"]
+    },
+    "no_duplicates": true
+  }
+}

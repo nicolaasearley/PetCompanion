@@ -61,7 +61,7 @@
     "recommended_content_ids": [
       "skill.name_response",
       "soc.environments.front_garden",
-      "care.brushing"
+      "prep.gather_records_questions"
     ],
     "absent_content_ids": ["skill.paw_handling"],
     "sections": {
@@ -72,7 +72,9 @@
     "explanations": true,
     "catalogue_refs": [
       "rule.handling_cadence@1",
+      "rule.event_prep_vet@1",
       "skill.paw_handling@1",
+      "prep.gather_records_questions@1",
       "care.brushing@1"
     ],
     "suppressed": [

@@ -1,0 +1,41 @@
+{
+  "scenario": "dismissing one activity does not suppress different content from the same rule",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 6,
+  "training_state": [
+    {
+      "skill_content_id": "skill.marker_intro",
+      "status": "active",
+      "started_on": "2026-07-20",
+      "last_practiced_on": "2026-08-03"
+    },
+    {
+      "skill_content_id": "skill.name_response",
+      "status": "active",
+      "started_on": "2026-07-20",
+      "last_practiced_on": "2026-08-03"
+    }
+  ],
+  "recent_history": [
+    {
+      "local_date": "2026-08-06",
+      "content_id": "skill.marker_intro",
+      "rule_content_id": "rule.active_skill_practice",
+      "category": "training",
+      "outcome": "dismissed"
+    }
+  ],
+  "expect": {
+    "recommended_content_ids": ["skill.name_response"],
+    "absent_content_ids": ["skill.marker_intro"],
+    "suppressed": [
+      {
+        "candidate_key": "rule.active_skill_practice:skill.marker_intro",
+        "reason": "cooldown"
+      }
+    ],
+    "explanations": true,
+    "no_duplicates": true
+  }
+}

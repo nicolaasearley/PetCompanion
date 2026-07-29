@@ -1,0 +1,51 @@
+{
+  "scenario": "event prep is once per event; a second vet visit still qualifies",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 6,
+  "pet": {
+    "name": "Pip",
+    "birth_info": { "kind": "exact", "birth_date": "2026-05-28" }
+  },
+  "events": [
+    {
+      "event_id": "vet-already-prepped",
+      "title": "Follow-up vet visit",
+      "kind": "vet_appointment",
+      "local_date": "2026-08-07",
+      "exact_time": "10:00",
+      "confirmed": true
+    },
+    {
+      "event_id": "vet-new",
+      "title": "Vaccination appointment",
+      "kind": "vet_appointment",
+      "local_date": "2026-08-09",
+      "exact_time": "15:30",
+      "confirmed": true
+    }
+  ],
+  "recent_history": [
+    {
+      "local_date": "2026-08-05",
+      "content_id": "prep.gather_records_questions",
+      "rule_content_id": "rule.event_prep_vet",
+      "event_id": "vet-already-prepped",
+      "category": "preparation",
+      "outcome": "shown"
+    }
+  ],
+  "expect": {
+    "recommended_content_ids": ["prep.gather_records_questions"],
+    "suppressed": [
+      {
+        "candidate_key": "rule.event_prep_vet:prep.gather_records_questions:vet-already-prepped",
+        "reason": "frequency_cap_once"
+      }
+    ],
+    "explanations_include": [
+      "Pip's appointment is in 3 days — having records and questions ready helps."
+    ],
+    "no_duplicates": true
+  }
+}

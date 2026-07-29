@@ -1,0 +1,27 @@
+{
+  "scenario": "showing one start suggestion does not cool down every other skill",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 6,
+  "recent_history": [
+    {
+      "local_date": "2026-08-05",
+      "content_id": "skill.marker_intro",
+      "rule_content_id": "rule.start_next_skill",
+      "category": "training",
+      "outcome": "shown"
+    }
+  ],
+  "expect": {
+    "recommended_content_ids": ["skill.name_response"],
+    "absent_content_ids": ["skill.marker_intro"],
+    "suppressed": [
+      {
+        "candidate_key": "rule.start_next_skill:skill.marker_intro",
+        "reason": "cooldown"
+      }
+    ],
+    "explanations": true,
+    "no_duplicates": true
+  }
+}

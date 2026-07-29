@@ -20,6 +20,10 @@ function rule(
   effort_band: RecommendationRuleRow["effort_band"],
   explanation_template: string,
   eligibility: Record<string, unknown>,
+  options: {
+    default_priority?: RecommendationRuleRow["default_priority"];
+    frequency_cap?: RecommendationRuleRow["frequency_cap"];
+  } = {},
 ): RecommendationRuleRow {
   return {
     content_id,
@@ -29,10 +33,10 @@ function rule(
     category,
     eligibility,
     cooldown_days,
-    frequency_cap: null,
+    frequency_cap: options.frequency_cap ?? null,
     effort_band,
     default_time_window: "anytime",
-    default_priority: "P3",
+    default_priority: options.default_priority ?? "P3",
     explanation_template,
     effective_from,
     retired_at: null,
@@ -61,6 +65,8 @@ export const SEED_CATALOGUE: CatalogueInput = {
     ["prep.travel_plan", "Plan the journey home", "preparation", "short", [5, 1]],
     ["prep.name_shortlist", "Settle the name the whole household will use", "preparation", "tiny", "any_time"],
     ["prep.first_days_calendar", "Keep the first days at home low-key", "preparation", "tiny", [7, 1]],
+    // Event-prep content (catalogue §9 `rule.event_prep_vet`); not a homecoming timing window.
+    ["prep.gather_records_questions", "Gather records and questions", "preparation", "short", null],
     ["care.brushing", "Brief brushing session", "grooming", "tiny", null],
   ].map(([content_id, title, category, default_effort, timing]) => ({
     content_id: content_id as string,
@@ -71,7 +77,11 @@ export const SEED_CATALOGUE: CatalogueInput = {
     default_effort: default_effort as "tiny" | "short" | "moderate",
     default_time_policy: "anytime" as const,
     metadata:
-      timing === null ? { default_cadence: "every_3_days" } : { timing_window_days_before_homecoming: timing },
+      timing === null
+        ? content_id === "prep.gather_records_questions"
+          ? { event_prep_kind: "vet_appointment" }
+          : { default_cadence: "every_3_days" }
+        : { timing_window_days_before_homecoming: timing },
   })),
   recommendation_rules: [
     rule(
@@ -89,6 +99,15 @@ export const SEED_CATALOGUE: CatalogueInput = {
       "short",
       "{Puppy} is almost home — a shared routine makes the first week calmer.",
       { homecoming: "today_or_tomorrow" },
+    ),
+    rule(
+      "rule.event_prep_vet",
+      "preparation",
+      0,
+      "short",
+      "{Puppy}'s appointment is {when} — having records and questions ready helps.",
+      { event_kind: "vet_appointment", within_days: 3 },
+      { default_priority: "P2", frequency_cap: { each_event: "once" } },
     ),
     rule(
       "rule.active_skill_practice",

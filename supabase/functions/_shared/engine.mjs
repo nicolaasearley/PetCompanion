@@ -6,12 +6,25 @@ var SUPPORTED_RULES = [
   "rule.active_skill_practice",
   "rule.alone_time",
   "rule.brushing",
+  "rule.event_prep_vet",
   "rule.handling_cadence",
   "rule.homecoming_routine",
   "rule.prep_window",
   "rule.socialization_breadth",
   "rule.start_next_skill"
 ];
+var EVENT_PREP_VET_CONTENT_ID = "prep.gather_records_questions";
+var EVENT_PREP_VET_TITLE = "Gather records and questions";
+var EVENT_PREP_VET_FALLBACK = {
+  content_id: EVENT_PREP_VET_CONTENT_ID,
+  version: 1,
+  title: EVENT_PREP_VET_TITLE,
+  category: "preparation",
+  default_obligation_class: "recommended",
+  default_effort: "short",
+  default_time_policy: "anytime",
+  metadata: { event_prep_kind: "vet_appointment" }
+};
 var SECTION_ORDER = {
   needs_attention: 0,
   today: 1,
@@ -170,7 +183,7 @@ function onCooldown(context, rule, contentId, scope = "rule") {
 function wasDismissedInCooldown(context, rule, contentId) {
   const latest = latestHistoryDate(
     context,
-    (entry) => entry.outcome === "dismissed" && (entry.content_id === contentId || entry.rule_content_id === rule.content_id)
+    (entry) => entry.outcome === "dismissed" && entry.content_id === contentId
   );
   return latest !== null && daysBetween(latest, context.local_date) <= Math.max(1, rule.cooldown_days);
 }
@@ -204,11 +217,11 @@ function withTotal(score) {
     total: score.base_priority + score.stage_relevance + score.due_frequency + score.user_selected_goal + score.continuity_value + score.preparation_urgency + score.variety_bonus - score.recent_repetition - score.estimated_burden - score.dismissal_penalty - score.conflict_penalty
   };
 }
-function scoreCandidate(context, rule, contentId, effort, category, weights) {
+function scoreCandidate(context, rule, contentId, effort, category, weights, cooldownScope) {
   const score = emptyScore(rule.default_priority, effort, weights);
   const latest = latestHistoryDate(
     context,
-    (entry) => entry.content_id === contentId || entry.rule_content_id === rule.content_id
+    (entry) => entry.content_id === contentId || cooldownScope === "rule" && entry.rule_content_id === rule.content_id
   );
   if (latest) {
     const elapsed = daysBetween(latest, context.local_date);
@@ -230,8 +243,9 @@ function ruleMap(catalogue) {
     catalogue.recommendation_rules.filter((rule) => SUPPORTED_RULES.includes(rule.content_id)).map((rule) => [rule.content_id, rule])
   );
 }
-function addCandidate(candidates, suppressed, context, rule, content, title, category, effort, values, weights, scorePatch = {}, cooldownScope = "rule") {
-  const candidateKey = `${rule.content_id}:${content.content_id}`;
+function addCandidate(candidates, suppressed, context, rule, content, title, category, effort, values, weights, scorePatch = {}, cooldownScope = "rule", scopeKey) {
+  const candidateKey = scopeKey ? `${rule.content_id}:${content.content_id}:${scopeKey}` : `${rule.content_id}:${content.content_id}`;
+  const activityKey = scopeKey ? `${content.content_id}:${scopeKey}` : content.content_id;
   if (context.household.excluded_content_ids?.includes(content.content_id)) {
     suppressed.push({ candidate_key: candidateKey, reason: "content_excluded" });
     return;
@@ -250,15 +264,62 @@ function addCandidate(candidates, suppressed, context, rule, content, title, cat
   }
   candidates.push({
     candidate_key: candidateKey,
-    activity_key: content.content_id,
+    activity_key: activityKey,
     rule,
     content_ref: content,
     title,
     category,
     effort_band: effort,
     explanation_values: values,
-    score: withTotal({ ...scoreCandidate(context, rule, content.content_id, effort, category, weights), ...scorePatch })
+    score: withTotal({
+      ...scoreCandidate(context, rule, content.content_id, effort, category, weights, cooldownScope),
+      ...scorePatch
+    })
   });
+}
+function formatAppointmentWhen(localDate, eventDate) {
+  const days = daysBetween(localDate, eventDate);
+  if (days <= 0) return "today";
+  if (days === 1) return "tomorrow";
+  return `in ${days} days`;
+}
+function eventPrepVetCandidates(context, catalogue, rule, candidates, suppressed, weights) {
+  const eventKind = typeof rule.eligibility["event_kind"] === "string" ? rule.eligibility["event_kind"] : "vet_appointment";
+  const withinDays = typeof rule.eligibility["within_days"] === "number" ? rule.eligibility["within_days"] : 3;
+  const content = catalogue.task_definitions.find((row) => row.content_id === EVENT_PREP_VET_CONTENT_ID) ?? EVENT_PREP_VET_FALLBACK;
+  for (const event of context.events) {
+    if (!event.confirmed || event.kind !== eventKind) continue;
+    if (event.local_date < context.local_date) continue;
+    const days = daysBetween(context.local_date, event.local_date);
+    if (days > withinDays) continue;
+    const candidateKey = `${rule.content_id}:${content.content_id}:${event.event_id}`;
+    const onceDone = context.recent_history.some(
+      (entry) => entry.outcome !== "expired" && (entry.content_id === content.content_id || entry.rule_content_id === rule.content_id) && (entry.event_id === void 0 || entry.event_id === event.event_id)
+    );
+    if (onceDone) {
+      suppressed.push({ candidate_key: candidateKey, reason: "frequency_cap_once" });
+      continue;
+    }
+    addCandidate(
+      candidates,
+      suppressed,
+      context,
+      rule,
+      content,
+      content.title,
+      "preparation",
+      content.default_effort,
+      {
+        Puppy: context.pet.name,
+        name: context.pet.name,
+        when: formatAppointmentWhen(context.local_date, event.local_date)
+      },
+      weights,
+      { preparation_urgency: Math.max(0, weights.preparation_urgency_max - days) },
+      "content",
+      event.event_id
+    );
+  }
 }
 function prepCandidates(context, catalogue, stage, rule, candidates, suppressed, weights) {
   if (stage.stage_key !== "preparing" || !context.pet.expected_homecoming_date) return;
@@ -295,6 +356,10 @@ function homecomingCandidate(context, catalogue, rule, candidates, suppressed, w
   if (days < 0 || days > 1) return;
   const content = catalogue.task_definitions.find((row) => row.content_id === "prep.routine_agreement");
   if (!content) return;
+  if (context.recent_history.some((entry) => entry.content_id === content.content_id && entry.outcome !== "expired")) {
+    suppressed.push({ candidate_key: `${rule.content_id}:${content.content_id}`, reason: "frequency_cap_once" });
+    return;
+  }
   addCandidate(
     candidates,
     suppressed,
@@ -313,6 +378,8 @@ function startSkillCandidates(context, catalogue, stage, rule, candidates, suppr
   if (!stage.sufficient_profile || !stage.stage_key) return;
   const activeCount = context.training_state.filter((state) => state.status === "active").length;
   if (activeCount >= 2) return;
+  const lastStartedOn = context.training_state.map((state) => state.started_on).filter((value) => Boolean(value)).sort(compareText).pop();
+  if (lastStartedOn && daysBetween(lastStartedOn, context.local_date) < rule.cooldown_days) return;
   const stateBySkill = new Map(context.training_state.map((state) => [state.skill_content_id, state]));
   const currentPosition = stagePosition(stage.stage_key, catalogue.development_stages);
   for (const skill of catalogue.training_skills) {
@@ -335,7 +402,8 @@ function startSkillCandidates(context, catalogue, stage, rule, candidates, suppr
       skill.effort_band,
       { Puppy: context.pet.name, name: context.pet.name, stage: stage.stage_key, skill: skill.title },
       weights,
-      { user_selected_goal: state?.user_selected_goal ? weights.user_selected_goal : 0 }
+      { user_selected_goal: state?.user_selected_goal ? weights.user_selected_goal : 0 },
+      "content"
     );
   }
 }
@@ -527,7 +595,8 @@ function activeSkillPracticeCandidates(context, catalogue, rule, candidates, sup
         // two adaptations the MVP allows for training, and both apply here.
         user_selected_goal: state.user_selected_goal === false ? 0 : weights.user_selected_goal,
         continuity_value: weights.continuity_value
-      }
+      },
+      "content"
     );
   }
 }
@@ -656,6 +725,8 @@ function generatePlan(context) {
   if (prepRule) prepCandidates(context, catalogue, stage, prepRule, candidates, suppressed, weights);
   const homecomingRule = rules.get("rule.homecoming_routine");
   if (homecomingRule) homecomingCandidate(context, catalogue, homecomingRule, candidates, suppressed, weights);
+  const eventPrepVetRule = rules.get("rule.event_prep_vet");
+  if (eventPrepVetRule) eventPrepVetCandidates(context, catalogue, eventPrepVetRule, candidates, suppressed, weights);
   const startRule = rules.get("rule.start_next_skill");
   if (startRule) startSkillCandidates(context, catalogue, stage, startRule, candidates, suppressed, weights);
   const practiceRule = rules.get("rule.active_skill_practice");

@@ -1,0 +1,21 @@
+{
+  "scenario": "an actual skill start cools down all further start suggestions",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 6,
+  "training_state": [
+    {
+      "skill_content_id": "skill.marker_intro",
+      "status": "active",
+      "started_on": "2026-08-05"
+    }
+  ],
+  "expect": {
+    "absent_titles": [
+      "Start Name response",
+      "Start Paw handling"
+    ],
+    "explanations": true,
+    "no_duplicates": true
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "scenario": "confirmed vet appointment within 3 days yields gather-records prep",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 6,
+  "pet": {
+    "name": "Pip",
+    "birth_info": { "kind": "exact", "birth_date": "2026-05-28" }
+  },
+  "events": [
+    {
+      "event_id": "vet-fri",
+      "title": "Veterinary appointment",
+      "kind": "vet_appointment",
+      "local_date": "2026-08-08",
+      "exact_time": "14:00",
+      "confirmed": true
+    }
+  ],
+  "expect": {
+    "recommended_content_ids": ["prep.gather_records_questions"],
+    "sections": {
+      "coming_up": ["Veterinary appointment"]
+    },
+    "explanations": true,
+    "explanations_include": [
+      "Pip's appointment is in 2 days — having records and questions ready helps."
+    ],
+    "no_duplicates": true
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "scenario": "the homecoming routine is offered only once across its two-day window",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 6,
+  "pet": {
+    "expected_homecoming_date": "2026-08-06"
+  },
+  "recent_history": [
+    {
+      "local_date": "2026-08-05",
+      "content_id": "prep.routine_agreement",
+      "rule_content_id": "rule.homecoming_routine",
+      "category": "routine",
+      "outcome": "shown"
+    }
+  ],
+  "expect": {
+    "absent_titles": ["Agree the household routine — who does mornings, meals, nights"],
+    "suppressed": [
+      {
+        "candidate_key": "rule.homecoming_routine:prep.routine_agreement",
+        "reason": "frequency_cap_once"
+      }
+    ],
+    "explanations": true,
+    "no_duplicates": true
+  }
+}

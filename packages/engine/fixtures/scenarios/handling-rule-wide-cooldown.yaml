@@ -1,0 +1,45 @@
+{
+  "scenario": "recent paw handling cools down the shared handling cadence",
+  "local_date": "2026-08-06",
+  "capacity": "custom",
+  "custom_recommendation_budget": 6,
+  "training_state": [
+    {
+      "skill_content_id": "skill.marker_intro",
+      "status": "active",
+      "started_on": "2026-07-20",
+      "last_practiced_on": "2026-08-03"
+    },
+    {
+      "skill_content_id": "skill.name_response",
+      "status": "active",
+      "started_on": "2026-07-20",
+      "last_practiced_on": "2026-08-03"
+    },
+    {
+      "skill_content_id": "skill.paw_handling",
+      "status": "completed",
+      "started_on": "2026-07-01"
+    }
+  ],
+  "recent_history": [
+    {
+      "local_date": "2026-08-05",
+      "content_id": "skill.paw_handling",
+      "rule_content_id": "rule.handling_cadence",
+      "category": "training",
+      "outcome": "completed"
+    }
+  ],
+  "expect": {
+    "absent_content_ids": ["skill.body_handling", "skill.paw_handling"],
+    "suppressed": [
+      {
+        "candidate_key": "rule.handling_cadence:skill.body_handling",
+        "reason": "cooldown"
+      }
+    ],
+    "explanations": true,
+    "no_duplicates": true
+  }
+}

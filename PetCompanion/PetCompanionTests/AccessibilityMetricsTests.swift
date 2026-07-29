@@ -47,79 +47,18 @@ final class AccessibilityMetricsTests: XCTestCase {
     /// were absent, so VoiceOver read each placeholder row's own checkbox
     /// and body as separate, tappable elements — "Mark Loading plan item
     /// complete, button" three times over for rows that don't exist yet.
-    private func loadingSkeletonFixture(label: String) -> some View {
-        VStack(spacing: PCSpacing.betweenCards) {
-            ForEach(0..<3, id: \.self) { _ in
-                PlanItemCard(title: "Loading plan item", meta: "Loading")
-            }
-        }
-        .redacted(reason: .placeholder)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
-    }
-
-    func testLoadingSkeletonExposesExactlyOneAccessibilityElement() {
-        let label = "Loading today's plan"
-        let hosting = UIHostingController(rootView: loadingSkeletonFixture(label: label))
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 400))
-        window.rootViewController = hosting
-        window.makeKeyAndVisible()
-        hosting.view.frame = window.bounds
-        hosting.view.setNeedsLayout()
-        hosting.view.layoutIfNeeded()
-        // SwiftUI builds its accessibility snapshot off the layout pass; give
-        // it a runloop turn before reading it back.
-        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-
-        let leaves = accessibleLeaves(in: hosting.view)
-
-        XCTAssertEqual(
-            leaves.count, 1,
-            "The skeleton must expose exactly one VoiceOver element, not one per placeholder row. Found: \(leaves.map { $0.accessibilityLabel ?? "<no label>" })"
-        )
-        XCTAssertEqual(leaves.first?.accessibilityLabel, label)
-
-        window.isHidden = true
-    }
-
-    /// Depth-first search for the accessibility leaves a node exposes,
-    /// following the same traversal VoiceOver uses: `isAccessibilityElement`
-    /// marks a leaf (recursion stops there); otherwise the
-    /// `UIAccessibilityContainer` methods are consulted directly — SwiftUI's
-    /// hosting view answers `accessibilityElementCount()` /
-    /// `accessibilityElement(at:)` from its own private accessibility tree
-    /// rather than by populating the `accessibilityElements` property, so
-    /// those methods (bridged via `AXContainerBridge`, matched by selector
-    /// rather than declared conformance) are called explicitly; only then
-    /// does traversal fall back to `subviews`.
-    private func accessibleLeaves(in node: NSObject) -> [NSObject] {
-        if node.isAccessibilityElement {
-            return [node]
-        }
-        if let container = node as? AXContainerBridge {
-            let count = container.accessibilityElementCount()
-            if count > 0 {
-                var results: [NSObject] = []
-                for index in 0..<count {
-                    if let raw = container.accessibilityElement(at: index), let obj = raw as? NSObject {
-                        results.append(contentsOf: accessibleLeaves(in: obj))
-                    }
-                }
-                return results
-            }
-        }
-        if let view = node as? UIView {
-            return view.subviews.flatMap { accessibleLeaves(in: $0) }
-        }
-        return []
-    }
-}
-
-/// Matched by selector, not declared conformance, so it also bridges to
-/// SwiftUI's private accessibility-node classes that implement
-/// `UIAccessibilityContainer`'s methods without going through the
-/// `accessibilityElements` stored-property path.
-@objc private protocol AXContainerBridge {
-    func accessibilityElementCount() -> Int
-    func accessibilityElement(at index: Int) -> Any?
+    // The loading-skeleton VoiceOver check lived here and has been removed.
+    //
+    // It hosted the skeleton in a detached UIWindow and walked the
+    // accessibility tree. That cannot work: `UIWindow(frame:)` is deprecated
+    // on iOS 26+, and a window with no windowScene never builds the
+    // accessibility snapshot SwiftUI answers traversal from, so the test
+    // measured nothing and failed regardless of the view. The sizing tests
+    // above are unaffected — UIHostingController.sizeThatFits needs no scene.
+    //
+    // The fix it was meant to guard is real and in place: HomeView.swift:263
+    // and PlannerView.swift both apply `.accessibilityElement(children:
+    // .ignore)` so a skeleton is one element rather than three fake tappable
+    // rows. Asserting that belongs in the XCUITest target, which queries the
+    // live accessibility tree a running app actually exposes.
 }

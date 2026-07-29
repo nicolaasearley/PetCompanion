@@ -18,7 +18,7 @@ xcrun simctl keychain booted reset
 ```
 
 Without this, iOS offers saved iCloud Keychain credentials in the QuickType
-bar over the sign-up form, and **a real email address ends up in the
+bar over the sign-in form, and **a real email address ends up in the
 screenshots**. The harness refuses to write a PNG showing an address it did
 not type itself, so the symptom is missing screenshots plus a `REFUSED to
 capture` line in `NOTES.txt`. If you see that, run the command above.
@@ -65,7 +65,22 @@ Every scenario offers the same three variants:
 | --- | --- | --- |
 | `testAtDefaultText` | `UICTContentSizeCategoryL` | light |
 | `testAtAccessibilityXXXL` | `UICTContentSizeCategoryAccessibilityXXXL` | light |
-| `testAtDefaultTextDark` | `UICTContentSizeCategoryL` | dark |
+| `testAtDefaultTextDark` | `UICTContentSizeCategoryL` | dark — **requires the simctl step below** |
+
+Dark appearance is a **device** setting. Run this before `xcodebuild`, and
+put it back afterwards:
+
+```
+xcrun simctl ui booted appearance dark    # before testAtDefaultTextDark
+xcrun simctl ui booted appearance light   # afterwards
+```
+
+`-UIUserInterfaceStyle Dark` as a launch argument does **nothing** on iOS 27
+— it was tried, and the "dark" screenshots differed from the light ones by
+0.05% of their pixels, which was the clock. The harness measures the
+appearance it actually rendered and writes a `WARNING` line into `NOTES.txt`
+if it does not match the variant name, so a folder called `-dark` full of
+light screenshots announces itself instead of quietly misleading you.
 
 | Test class | Scenario folder | Covers |
 | --- | --- | --- |

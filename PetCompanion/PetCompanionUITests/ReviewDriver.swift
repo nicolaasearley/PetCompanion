@@ -1,3 +1,5 @@
+import CoreGraphics
+import UIKit
 import XCTest
 
 /// Text size the app is driven at.
@@ -28,6 +30,19 @@ enum ReviewTextSize: String, CaseIterable {
     }
 }
 
+/// Light or dark appearance.
+///
+/// **This is a device setting, not a launch argument.** Passing
+/// `-UIUserInterfaceStyle Dark` was tried first and it does nothing on iOS
+/// 27: the app rendered light and the two screenshots differed by 0.05% of
+/// their pixels, which was the clock. The argument is still passed because it
+/// is harmless, but the thing that actually works is
+///
+///     xcrun simctl ui booted appearance dark
+///
+/// run before `xcodebuild`. `ReviewDriver` measures what was actually
+/// rendered and says so, so a run can never quietly claim an appearance it
+/// did not have.
 enum ReviewAppearance: String, CaseIterable {
     case light
     case dark
@@ -112,6 +127,7 @@ final class ReviewDriver {
             "PetCompanion never reached the foreground; nothing downstream is meaningful."
         )
         note("launch arguments: \(arguments.joined(separator: " "))")
+        recordRenderedAppearance()
     }
 
     // MARK: - Capture
@@ -163,6 +179,54 @@ final class ReviewDriver {
             note("could not write \(url.path): \(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// Measures the appearance the app is actually rendering and says so.
+    ///
+    /// A launch argument that silently does nothing is the worst possible
+    /// outcome for a review harness: a folder named `-dark` full of light
+    /// screenshots would have a reviewer sign off on a dark theme nobody
+    /// looked at. `-UIUserInterfaceStyle` is exactly that argument on iOS 27,
+    /// so the rendered result is measured rather than assumed.
+    private func recordRenderedAppearance() {
+        guard let rendered = renderedAppearance() else {
+            note("could not measure the rendered appearance")
+            return
+        }
+        if rendered == appearance {
+            note("rendered appearance: \(rendered.rawValue) (measured, matches the request)")
+        } else {
+            note(
+                "WARNING — requested \(appearance.rawValue) but the app rendered "
+                    + "\(rendered.rawValue). The screenshots in this folder are "
+                    + "\(rendered.rawValue), whatever the folder name says. Appearance is a "
+                    + "device setting: run `xcrun simctl ui booted appearance \(appearance.rawValue)` "
+                    + "before xcodebuild."
+            )
+        }
+    }
+
+    /// Average luminance of the whole screen, bucketed to light or dark.
+    ///
+    /// Averaging the entire screenshot is crude but decisive: this app's two
+    /// themes are a near-white and a near-black background, and text occupies
+    /// a small fraction of the pixels either way.
+    func renderedAppearance() -> ReviewAppearance? {
+        guard let source = XCUIScreen.main.screenshot().image.cgImage else { return nil }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        guard let context = CGContext(
+            data: &pixel,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.draw(source, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let luminance =
+            (0.299 * Double(pixel[0]) + 0.587 * Double(pixel[1]) + 0.114 * Double(pixel[2])) / 255
+        return luminance > 0.5 ? .light : .dark
     }
 
     /// Every email address currently on screen that the harness did not put
@@ -248,12 +312,7 @@ final class ReviewDriver {
             note("never appeared: \(description)")
             return false
         }
-        // The software keyboard covers the bottom third of the screen, which
-        // in this app is exactly where the primary action of every form sits.
-        if !element.isHittable { dismissSystemPrompt() }
-        if !element.isHittable { dismissKeyboard() }
-        if !element.isHittable { scrollToReveal(element) }
-        guard element.isHittable else {
+        guard makeHittable(element) else {
             note("found but not tappable (likely clipped off-screen): \(description)")
             return false
         }
@@ -287,10 +346,7 @@ final class ReviewDriver {
             note("never appeared: \(description)")
             return false
         }
-        if !field.isHittable { dismissSystemPrompt() }
-        if !field.isHittable { dismissKeyboard() }
-        if !field.isHittable { scrollToReveal(field) }
-        guard field.isHittable else {
+        guard makeHittable(field) else {
             note("found but not tappable: \(description)")
             return false
         }
@@ -443,6 +499,41 @@ final class ReviewDriver {
         }
         close.tap()
         note("declined the system “Use Strong Password?” panel on the password field")
+    }
+
+    /// Clears whatever is covering `element`, and waits for it to settle.
+    ///
+    /// Written as a retry loop rather than a straight sequence because the
+    /// obstruction is often still animating. The "Save Password?" alert in
+    /// particular arrives a beat after the screen it covers, so a single
+    /// check could look past it, find the field un-hittable, and give up
+    /// while the alert was mid-dismissal.
+    func makeHittable(_ element: XCUIElement, attempts: Int = 3) -> Bool {
+        for _ in 0..<attempts {
+            if element.isHittable { return true }
+
+            if dismissSystemPrompt(), waitUntilHittable(element, timeout: 3) {
+                return true
+            }
+            dismissKeyboard()
+            if element.isHittable { return true }
+
+            scrollToReveal(element)
+            if waitUntilHittable(element, timeout: 1) { return true }
+        }
+        return element.isHittable
+    }
+
+    /// Polls `isHittable`. There is no `waitForHittable` on `XCUIElement`,
+    /// and `waitForExistence` is not the same question.
+    @discardableResult
+    func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if element.isHittable { return true }
+            _ = XCTWaiter.wait(for: [expectationNeverFulfilled()], timeout: 0.2)
+        } while Date() < deadline
+        return element.isHittable
     }
 
     /// Puts the software keyboard away.

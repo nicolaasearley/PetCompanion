@@ -27,6 +27,7 @@ technical decisions should be recorded here before or alongside implementation.
 19. [Current Build Status](19-current-build-status.md)
 20. [Implementation Plan — Slice B Daily Coordination](20-implementation-plan-slice-b.md)
 21. [Hosted Supabase Deployment Runbook](21-hosted-supabase-deployment.md)
+22. [Handoff](22-handoff.md) — start here if you are new to the project
 
 ## Working conventions
 

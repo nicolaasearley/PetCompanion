@@ -335,6 +335,7 @@ private struct PlannerContentView: View {
             }
         }
         .redacted(reason: .placeholder)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Loading agenda")
     }
 

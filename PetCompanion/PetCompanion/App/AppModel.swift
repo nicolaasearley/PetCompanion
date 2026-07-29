@@ -31,6 +31,10 @@ final class AppModel {
     // `.mock` uses engine §26 fixtures; real environments use the
     // server-authoritative generate-plan and write-path functions.
     private(set) var plans: any PlanService
+    /// Training catalogue, goals and sessions (F08). Mock builds read the
+    /// in-memory catalogue; real environments read the server's reviewed
+    /// content and write through the write path.
+    private(set) var training: any TrainingService
     /// Full occurrence/schedule coordination is installed for real
     /// environments after the Supabase client is available. Mock/preview
     /// builds keep using Planner's compatibility adapter.
@@ -71,6 +75,7 @@ final class AppModel {
         auth: any AuthService,
         households: any HouseholdService,
         plans: any PlanService,
+        training: any TrainingService,
         notifications: (any LocalNotificationServicing)? = nil,
         backendSelection: BackendSelection = .mock,
         backendMode: BackendMode = .mock
@@ -78,6 +83,7 @@ final class AppModel {
         self.auth = auth
         self.households = households
         self.plans = plans
+        self.training = training
         self.notifications = notifications ?? LocalNotificationService.live()
         self.backendSelection = backendSelection
         self.backendMode = backendMode
@@ -92,6 +98,7 @@ final class AppModel {
             auth: MockAuthService(backend: backend),
             households: MockHouseholdService(backend: backend),
             plans: MockPlanService(backend: backend),
+            training: MockTrainingService(backend: backend),
             backendSelection: selection,
             backendMode: .resolving
         )
@@ -105,7 +112,8 @@ final class AppModel {
         AppModel(
             auth: MockAuthService(backend: backend),
             households: MockHouseholdService(backend: backend),
-            plans: MockPlanService(backend: backend)
+            plans: MockPlanService(backend: backend),
+            training: MockTrainingService(backend: backend)
         )
     }
 
@@ -156,6 +164,7 @@ final class AppModel {
             notifications: notifications,
             householdTimeZone: { [weak self] in self?.household?.clock.timeZone }
         )
+        training = RealTrainingService(client: client, operationQueue: operationQueue)
         planner = RealPlannerService(
             client: client,
             model: self,

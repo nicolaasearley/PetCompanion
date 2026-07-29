@@ -27,7 +27,13 @@ export type WritePathCommand =
   | "edit_socialization_record"
   | "remove_socialization_record"
   | "set_socialization_exclusion"
-  | "clear_socialization_exclusion";
+  | "clear_socialization_exclusion"
+  | "start_training_goal"
+  | "pause_training_goal"
+  | "resume_training_goal"
+  | "retire_training_goal"
+  | "update_training_progress"
+  | "log_training_session";
 
 export interface CommandEnvelope<TPayload = unknown> {
   command: WritePathCommand;
@@ -343,6 +349,102 @@ export interface SetSocializationExclusionPayload {
 export interface ClearSocializationExclusionPayload {
   exclusion_id: string;
 }
+// ---------------------------------------------------------------------------
+// Training goals and sessions (F08, epic E06)
+// ---------------------------------------------------------------------------
+
+/**
+ * The seven owner-reported states of F08, minus `paused`: pausing is a goal
+ * status change (`pause_training_goal`), not a judgement about learning, so
+ * the two can never disagree and pausing never erases reported progress.
+ */
+export type TrainingProgressState =
+  | "not_started"
+  | "introduced"
+  | "practicing"
+  | "reliable_in_familiar_setting"
+  | "generalizing"
+  | "maintained";
+
+export type TrainingGoalStatus = "active" | "paused" | "retired";
+
+/**
+ * Every command after `start_training_goal` addresses an existing goal, either
+ * by id or by the (pet, skill) pair the lesson screen already has in hand.
+ */
+export type TrainingGoalRef =
+  | { goal_id: string; pet_id?: string; skill_ref?: string }
+  | { goal_id?: string; pet_id: string; skill_ref: string };
+
+/** TR-03. Idempotent: starting the same skill twice returns the same goal. */
+export interface StartTrainingGoalPayload {
+  pet_id: string;
+  /** A published catalogue skill content id (`skill.*`). */
+  skill_ref: string;
+}
+
+/** Optimistic concurrency is optional; supplying it turns a lost update into
+ * an explicit conflict rather than a silent overwrite. */
+export type PauseTrainingGoalPayload = TrainingGoalRef & { expected_revision?: number };
+export type ResumeTrainingGoalPayload = TrainingGoalRef & { expected_revision?: number };
+export type RetireTrainingGoalPayload = TrainingGoalRef & { expected_revision?: number };
+
+/** TR-05. Owner-reported, never inferred (US-065, engine §19.2). */
+export type UpdateTrainingProgressPayload = TrainingGoalRef & {
+  progress_state: TrainingProgressState;
+  expected_revision?: number;
+};
+
+/** TR-04. `progress_state_after` is a separate, deliberate control: without it
+ * a session records practice and nothing else (US-063). */
+export type LogTrainingSessionPayload = TrainingGoalRef & {
+  /** Defaults to the household's local today; back-datable up to 30 days. */
+  effective_date?: string;
+  effective_time?: string;
+  duration_minutes?: number;
+  outcome_note?: string;
+  progress_state_after?: TrainingProgressState;
+  media_refs?: unknown[];
+};
+
+export interface TrainingGoalResult {
+  goal: {
+    id: string;
+    household_id: string;
+    pet_id: string;
+    skill_ref: string;
+    status: TrainingGoalStatus;
+    progress_state: TrainingProgressState;
+    started_at: string;
+    started_by?: string;
+    paused_at?: string;
+    resumed_at?: string;
+    retired_at?: string;
+    progress_state_updated_at?: string;
+    progress_state_updated_by?: string;
+    revision: number;
+    last_session_on?: string;
+    session_count: number;
+  };
+}
+
+export type LogTrainingSessionResult = TrainingGoalResult & {
+  session: {
+    id: string;
+    goal_id: string;
+    pet_id: string;
+    skill_ref: string;
+    /** The catalogue version the caregiver actually followed (DM §12.3). */
+    skill_version: number;
+    effective_date: string;
+    effective_time?: string;
+    duration_minutes?: number;
+    outcome_note?: string;
+    progress_state_after?: TrainingProgressState;
+    actor_user_id: string;
+    recorded_at: string;
+  };
+};
 
 export interface CommandSuccess<T = unknown> {
   ok: true;

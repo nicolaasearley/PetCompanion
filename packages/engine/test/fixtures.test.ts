@@ -68,6 +68,8 @@ interface Fixture {
     sections?: Partial<Record<PlanResult["items"][number]["section"], string[]>>;
     no_duplicates?: boolean;
     explanations?: boolean;
+    /** Exact rendered explanation text, so a template can be proved truthful. */
+    explanations_include?: string[];
     sufficient_profile?: boolean;
     catalogue_refs?: string[];
     suppressed?: Array<{ candidate_key: string; reason: string }>;
@@ -211,6 +213,12 @@ function assertFixture(fixture: Fixture, result: PlanResult): void {
   }
   if (expectation.explanations) {
     assert.ok(recommendations.every((item) => item.explanation_text && !item.explanation_text.includes("{")));
+  }
+  for (const text of expectation.explanations_include ?? []) {
+    assert.ok(
+      result.items.some((item) => item.explanation_text === text),
+      `missing explanation "${text}"`,
+    );
   }
   if (expectation.sufficient_profile !== undefined) {
     assert.equal(result.plan.stage_snapshot.sufficient_profile, expectation.sufficient_profile);

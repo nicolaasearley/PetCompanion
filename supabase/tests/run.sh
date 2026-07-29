@@ -83,6 +83,10 @@ run_suite "${SCRIPT_DIR}/socialization.sql" "Socialization passport suite"
 socialization_status=$?
 [[ ${socialization_status} -ne 0 ]] && overall_status=1
 
+run_suite "${SCRIPT_DIR}/training.sql" "Training goals and sessions suite"
+training_status=$?
+[[ ${training_status} -ne 0 ]] && overall_status=1
+
 echo ""
 echo "=================================================================="
 echo "SLICE A+B DATABASE TEST SUMMARY"
@@ -94,6 +98,7 @@ printf '  %-24s %s\n' "Generation lifecycle:" "$([[ ${generation_status} -eq 0 ]
 printf '  %-24s %s\n' "Daily coordination:" "$([[ ${coordination_status} -eq 0 ]] && echo PASS || echo FAIL)"
 printf '  %-24s %s\n' "Household invitations:" "$([[ ${invitations_status} -eq 0 ]] && echo PASS || echo FAIL)"
 printf '  %-24s %s\n' "Socialization passport:" "$([[ ${socialization_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Training goals/sessions:" "$([[ ${training_status} -eq 0 ]] && echo PASS || echo FAIL)"
 echo "=================================================================="
 
 if [[ ${overall_status} -eq 0 ]]; then

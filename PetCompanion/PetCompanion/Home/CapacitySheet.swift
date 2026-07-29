@@ -19,60 +19,72 @@ struct CapacitySheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PCSpacing.xl) {
-            HStack {
-                Text("How much can today hold?")
-                    .font(Font.pc.title)
-                    .foregroundStyle(Color.pc.ink)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                // Explicit close for assistive tech (doc 09 §7.4).
-                Button("Close") { dismiss() }
+        ScrollView {
+            VStack(alignment: .leading, spacing: PCSpacing.xl) {
+                HStack {
+                    Text("How much can today hold?")
+                        .font(Font.pc.title)
+                        .foregroundStyle(Color.pc.ink)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    // Explicit close for assistive tech (doc 09 §7.4).
+                    Button("Close") { dismiss() }
+                        .font(Font.pc.secondary)
+                        .foregroundStyle(Color.pc.primary)
+                }
+
+                VStack(spacing: 0) {
+                    PCRadioRow(
+                        title: "Normal",
+                        subtitle: "Up to 3 ideas",
+                        isSelected: mode == .normal
+                    ) { mode = .normal }
+                    PCRadioRow(
+                        title: "Busy",
+                        subtitle: "1 short idea",
+                        isSelected: mode == .busy
+                    ) { mode = .busy }
+                    PCRadioRow(
+                        title: "Essentials only",
+                        subtitle: "Just the must-dos",
+                        isSelected: mode == .essentialsOnly
+                    ) { mode = .essentialsOnly }
+                }
+
+                Text("Apply to")
                     .font(Font.pc.secondary)
-                    .foregroundStyle(Color.pc.primary)
-            }
+                    .foregroundStyle(Color.pc.inkSecondary)
 
-            VStack(spacing: 0) {
-                PCRadioRow(
-                    title: "Normal",
-                    subtitle: "Up to 3 ideas",
-                    isSelected: mode == .normal
-                ) { mode = .normal }
-                PCRadioRow(
-                    title: "Busy",
-                    subtitle: "1 short idea",
-                    isSelected: mode == .busy
-                ) { mode = .busy }
-                PCRadioRow(
-                    title: "Essentials only",
-                    subtitle: "Just the must-dos",
-                    isSelected: mode == .essentialsOnly
-                ) { mode = .essentialsOnly }
+                VStack(spacing: 0) {
+                    PCRadioRow(
+                        title: "Just today",
+                        isSelected: scope == .todayOnly
+                    ) { scope = .todayOnly }
+                    PCRadioRow(
+                        title: "Every day (default)",
+                        isSelected: scope == .householdDefault
+                    ) { scope = .householdDefault }
+                }
             }
-
-            Text("Apply to")
-                .font(Font.pc.secondary)
-                .foregroundStyle(Color.pc.inkSecondary)
-
-            VStack(spacing: 0) {
-                PCRadioRow(
-                    title: "Just today",
-                    isSelected: scope == .todayOnly
-                ) { scope = .todayOnly }
-                PCRadioRow(
-                    title: "Every day (default)",
-                    isSelected: scope == .householdDefault
-                ) { scope = .householdDefault }
-            }
-
-            PrimaryButton(title: "Apply") {
-                onApply(mode, scope)
-                dismiss()
-            }
+            .padding(PCSpacing.screenMargin)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(PCSpacing.screenMargin)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.pc.surface)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.pc.border)
+                    .frame(height: 1)
+                PrimaryButton(title: "Apply") {
+                    onApply(mode, scope)
+                    dismiss()
+                }
+                .padding(.horizontal, PCSpacing.screenMargin)
+                .padding(.top, PCSpacing.md)
+                .padding(.bottom, PCSpacing.sm)
+            }
+            .background(Color.pc.surface)
+        }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }

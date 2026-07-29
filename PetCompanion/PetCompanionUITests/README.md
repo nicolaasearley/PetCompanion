@@ -69,7 +69,7 @@ Every scenario offers the same three variants:
 
 | Test class | Scenario folder | Covers |
 | --- | --- | --- |
-| `OnboardingScenarioTests` | `onboarding` | ON-01 Welcome → ON-02 account → ON-06 household → ON-07 pet → ON-08 routines → Home |
+| `OnboardingScenarioTests` | `onboarding` | ON-01 Welcome, ON-02 Create account, ON-03 Sign in → ON-06 household → ON-07 pet → ON-08 routines → Home |
 | `HomeScenarioTests` | `home` | HM-01 Daily Plan, plan-item detail sheet, HM-04 capacity sheet, quick-add |
 | `PlannerScenarioTests` | `planner` | PL-01 agenda, week navigation, task detail, jump-to-date |
 | `TrainingScenarioTests` | `training` | TR-01 overview, TR-02 catalogue, TR-03 lesson, starting a goal, logging a session |
@@ -116,6 +116,15 @@ empty — `seedForPreview` is wired to SwiftUI previews only — so **every
 signed-in surface is reached by walking onboarding first**. The account is
 synthetic (`critic@example.test`); `MockBackend.signIn` ignores the password
 entirely, so nothing here is a credential.
+
+Authentication goes through **ON-03 Sign in**, not ON-02 Create account.
+ON-02's password field declares `.newPassword`, so iOS covers the keyboard
+with a "Use Strong Password?" panel whose close control is inconsistently
+exposed — sometimes a button, sometimes a plain image — and about half of
+runs could not get past it. ON-03 declares `.password` and raises no panel.
+`MockBackend.signIn` is find-or-create, so signing in with an unseen address
+produces exactly the user that creating an account would have. ON-02 is still
+photographed, just not filled in.
 
 Out of reach, and deliberately not faked:
 

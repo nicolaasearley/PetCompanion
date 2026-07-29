@@ -49,27 +49,46 @@ struct AppNavigator {
         }
         if capturing { driver.capture("welcome") }
 
-        guard driver.tap(welcomeHeadline, describedAs: "Get started") else { return false }
+        // ON-02 is photographed but not filled in — see `visitCreateAccount`.
+        if capturing { visitCreateAccount() }
 
-        // ON-02 Create account.
-        let emailField = app.textFields.firstMatch
-        guard driver.type(
-            AppNavigator.reviewerEmail,
-            into: emailField,
-            describedAs: "email field on ON-02"
+        // Authentication goes through ON-03 Sign in, not ON-02 Create
+        // account. ON-02's password field declares `.newPassword`, so iOS
+        // covers the keyboard with a "Use Strong Password?" panel whose close
+        // button is inconsistently exposed — sometimes a Button, sometimes a
+        // plain Image — and roughly half of runs could not get past it. ON-03
+        // declares `.password`, which raises no such panel.
+        //
+        // Nothing is lost by this: `MockBackend.signIn` is find-or-create, so
+        // signing in with an address that has never been seen produces the
+        // same new user that creating an account would have. ON-03 is also a
+        // screen a reviewer wants to see.
+        guard driver.tap(
+            app.buttons["I have an account"],
+            describedAs: "I have an account"
         ) else { return false }
 
-        let passwordField = app.secureTextFields.firstMatch
-        _ = driver.type(
+        guard driver.waitForScreen(
+            [app.staticTexts["Welcome back"]],
+            describedAs: "ON-03 Sign in"
+        ) else { return false }
+
+        guard driver.type(
+            AppNavigator.reviewerEmail,
+            into: app.textFields.firstMatch,
+            describedAs: "email field on ON-03"
+        ) else { return false }
+        guard driver.type(
             AppNavigator.placeholderSecret,
-            into: passwordField,
-            describedAs: "password field on ON-02"
-        )
+            into: app.secureTextFields.firstMatch,
+            describedAs: "password field on ON-03"
+        ) else { return false }
+
         // Put the keyboard away before submitting. Its QuickType bar is a
         // separate window that sits over the form, and leaving it up made the
         // submit tap unreliable as well as polluting the screenshot.
         driver.dismissKeyboard()
-        if capturing { driver.capture("create-account") }
+        if capturing { driver.capture("sign-in") }
 
         guard driver.tap(
             app.buttons["Continue with email"],
@@ -117,6 +136,26 @@ struct AppNavigator {
             [homeGreeting, app.staticTexts["Today"]],
             describedAs: "HM-01 Home after onboarding"
         )
+    }
+
+    /// Photographs ON-02 Create account and comes straight back.
+    ///
+    /// The screen is worth showing a reviewer, but it is not used to
+    /// authenticate: focusing its `.newPassword` field summons the system
+    /// strong-password panel. Looking without touching keeps the screenshot
+    /// and skips the interstitial.
+    private func visitCreateAccount() {
+        guard driver.tap(welcomeHeadline, describedAs: "Get started") else { return }
+        guard driver.waitForScreen(
+            [app.staticTexts["Create your account"]],
+            describedAs: "ON-02 Create account"
+        ) else { return }
+        driver.capture("create-account")
+        driver.tapFirstAvailable(
+            [app.buttons["BackButton"], app.buttons["Back"]],
+            describedAs: "Back from ON-02"
+        )
+        driver.waitForScreen([welcomeHeadline], describedAs: "ON-01 Welcome (returning)")
     }
 
     /// Reaches Home without capturing the onboarding screens.

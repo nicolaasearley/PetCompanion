@@ -118,6 +118,12 @@ confirmed two ways:
 * the resulting images differ by **51%** of their pixels on Home and **32%**
   on Welcome.
 
+Appearance is verified the same way. With `simctl ui booted appearance dark`
+set, the driver measures `dark` and the Home screenshots differ from the light
+ones by **99.88%** of their pixels. Without it — relying on the launch
+argument alone — the measurement came back `light` and the difference was
+**0.05%**.
+
 Both variants pass an explicit size — `standard` does **not** inherit the
 device. That matters: this simulator was already sitting at an enlarged text
 size, so an inherited "default" baseline rendered at roughly AX1 and would

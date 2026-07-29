@@ -87,6 +87,54 @@ run_suite "${SCRIPT_DIR}/training.sql" "Training goals and sessions suite"
 training_status=$?
 [[ ${training_status} -ne 0 ]] && overall_status=1
 
+run_suite "${SCRIPT_DIR}/care.sql" "Care weight and providers suite"
+care_status=$?
+[[ ${care_status} -ne 0 ]] && overall_status=1
+
+run_suite "${SCRIPT_DIR}/medications.sql" "Care medications suite"
+medications_status=$?
+[[ ${medications_status} -ne 0 ]] && overall_status=1
+
+run_suite "${SCRIPT_DIR}/vaccinations.sql" "Care vaccinations suite"
+vaccinations_status=$?
+[[ ${vaccinations_status} -ne 0 ]] && overall_status=1
+
+run_suite "${SCRIPT_DIR}/grooming.sql" "Care grooming suite"
+grooming_status=$?
+[[ ${grooming_status} -ne 0 ]] && overall_status=1
+
+run_suite "${SCRIPT_DIR}/notes.sql" "Care notes suite"
+notes_status=$?
+[[ ${notes_status} -ne 0 ]] && overall_status=1
+
+run_suite "${SCRIPT_DIR}/notes_media.sql" "Care note media suite"
+notes_media_status=$?
+[[ ${notes_media_status} -ne 0 ]] && overall_status=1
+
+run_suite "${SCRIPT_DIR}/events.sql" "Events foundation suite"
+events_status=$?
+[[ ${events_status} -ne 0 ]] && overall_status=1
+
+run_suite "${SCRIPT_DIR}/event_notifications.sql" "Event notification candidates (US-086) suite"
+event_notifications_status=$?
+[[ ${event_notifications_status} -ne 0 ]] && overall_status=1
+
+run_suite "${SCRIPT_DIR}/life.sql" "Life milestones suite"
+life_status=$?
+[[ ${life_status} -ne 0 ]] && overall_status=1
+
+run_suite "${SCRIPT_DIR}/life_media.sql" "Life milestone media suite"
+life_media_status=$?
+[[ ${life_media_status} -ne 0 ]] && overall_status=1
+
+run_suite "${SCRIPT_DIR}/device_push.sql" "Device push / APNs foundation suite"
+device_push_status=$?
+[[ ${device_push_status} -ne 0 ]] && overall_status=1
+
+run_suite "${SCRIPT_DIR}/plan_realtime.sql" "Plan realtime publication suite"
+plan_realtime_status=$?
+[[ ${plan_realtime_status} -ne 0 ]] && overall_status=1
+
 echo ""
 echo "=================================================================="
 echo "SLICE A+B DATABASE TEST SUMMARY"
@@ -99,6 +147,18 @@ printf '  %-24s %s\n' "Daily coordination:" "$([[ ${coordination_status} -eq 0 ]
 printf '  %-24s %s\n' "Household invitations:" "$([[ ${invitations_status} -eq 0 ]] && echo PASS || echo FAIL)"
 printf '  %-24s %s\n' "Socialization passport:" "$([[ ${socialization_status} -eq 0 ]] && echo PASS || echo FAIL)"
 printf '  %-24s %s\n' "Training goals/sessions:" "$([[ ${training_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Care weight/providers:" "$([[ ${care_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Care medications:" "$([[ ${medications_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Care vaccinations:" "$([[ ${vaccinations_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Care grooming:" "$([[ ${grooming_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Care notes:" "$([[ ${notes_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Care note media:" "$([[ ${notes_media_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Events foundation:" "$([[ ${events_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Event notify US-086:" "$([[ ${event_notifications_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Life milestones:" "$([[ ${life_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Life milestone media:" "$([[ ${life_media_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Device push / APNs:" "$([[ ${device_push_status} -eq 0 ]] && echo PASS || echo FAIL)"
+printf '  %-24s %s\n' "Plan realtime pub:" "$([[ ${plan_realtime_status} -eq 0 ]] && echo PASS || echo FAIL)"
 echo "=================================================================="
 
 if [[ ${overall_status} -eq 0 ]]; then

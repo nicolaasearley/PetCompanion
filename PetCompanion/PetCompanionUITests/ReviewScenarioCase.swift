@@ -2,36 +2,70 @@ import XCTest
 
 /// Shared setup for every review scenario.
 ///
-/// Scenarios are separate `XCTestCase` subclasses rather than methods on one
-/// class so a reviewer can run exactly one surface:
+/// **Why variants are test methods rather than environment variables.**
+/// The obvious design is one test per scenario, with the text size and
+/// appearance passed in as `TEST_RUNNER_*` environment variables. That was
+/// tried first and it does not work: under `xcodebuild test` the
+/// `TEST_RUNNER_`-prefixed values never arrived in the runner process, and
+/// the run silently used the default size instead. Silently is the problem —
+/// a reviewer would have believed they were looking at AX5 and they would
+/// have been looking at default text.
 ///
-///     -only-testing:PetCompanionUITests/HomeScenarioTests
+/// So each variant is a named test, and selecting one is ordinary
+/// `-only-testing:`. What you asked for is what you get, or the command
+/// fails outright:
+///
+///     -only-testing:PetCompanionUITests/HomeScenarioTests/testAtAccessibilityXXXL
 class ReviewScenarioCase: XCTestCase {
-    /// Folder name under the output root. Overridden per scenario.
+    /// Folder name under `/tmp/petcompanion-ui`. Overridden per scenario.
     class var scenarioName: String { "scenario" }
 
     private(set) var driver: ReviewDriver!
     private(set) var navigator: AppNavigator!
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
+    // MARK: - Variants
+
+    func testAtDefaultText() {
+        walk(textSize: .standard, appearance: .light)
+    }
+
+    func testAtAccessibilityXXXL() {
+        walk(textSize: .ax5, appearance: .light)
+    }
+
+    func testAtDefaultTextDark() {
+        walk(textSize: .standard, appearance: .dark)
+    }
+
+    /// The actual tour. Overridden by each scenario.
+    func drive() {
+        XCTFail("\(type(of: self)) must override drive()")
+    }
+
+    // MARK: - Harness
+
+    private func walk(textSize: ReviewTextSize, appearance: ReviewAppearance) {
         // A scenario that hits a dead end should still deliver the
         // screenshots it did reach, plus a note saying what it missed.
         continueAfterFailure = true
-        driver = ReviewDriver(scenario: type(of: self).scenarioName, testCase: self)
-        navigator = AppNavigator(driver: driver)
-        driver.launch()
-    }
 
-    override func tearDownWithError() throws {
-        driver?.note("screenshots written to \(driver.outputDirectory.path)")
-        driver?.finish()
-        if let path = driver?.outputDirectory.path {
-            print("PC_UI_OUTPUT [\(type(of: self).scenarioName)] \(path)")
-        }
+        driver = ReviewDriver(
+            scenario: type(of: self).scenarioName,
+            testCase: self,
+            textSize: textSize,
+            appearance: appearance
+        )
+        navigator = AppNavigator(driver: driver)
+
+        driver.launch()
+        drive()
+
+        driver.note("screenshots written to \(driver.outputDirectory.path)")
+        driver.finish()
+        print("PC_UI_OUTPUT [\(type(of: self).scenarioName)] \(driver.outputDirectory.path)")
+
         driver = nil
         navigator = nil
-        try super.tearDownWithError()
     }
 
     // MARK: - Element helpers

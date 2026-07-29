@@ -5,7 +5,7 @@ import XCTest
 final class HomeScenarioTests: ReviewScenarioCase {
     override class var scenarioName: String { "home" }
 
-    func testHomeAndItsSheets() {
+    override func drive() {
         guard navigator.reachHome() else {
             driver.capture("stopped-before-home")
             driver.note("could not reach Home; nothing below was exercised")
@@ -20,7 +20,7 @@ final class HomeScenarioTests: ReviewScenarioCase {
 
         // Scrolled view: the recommended and coming-up sections sit below the
         // fold at any text size, and below several screens at AX5.
-        app.scrollViews.firstMatch.swipeUp()
+        driver.scrollDown()
         driver.capture("home-scrolled")
         driver.scrollToTop()
 

@@ -12,10 +12,17 @@ enum ReviewTextSize: String, CaseIterable {
     case standard
     case ax5
 
-    /// `nil` means "leave the device default alone".
-    var contentSizeCategoryName: String? {
+    /// Always non-nil, deliberately.
+    ///
+    /// The obvious design is for `standard` to pass nothing and inherit the
+    /// device. That is a trap: this simulator was already sitting at an
+    /// enlarged text size, so an inherited "default" baseline was rendering
+    /// at roughly AX1 and a reviewer comparing it against AX5 would have
+    /// concluded the app barely reflows. Both variants now state their size,
+    /// so a comparison is between two known quantities.
+    var contentSizeCategoryName: String {
         switch self {
-        case .standard: nil
+        case .standard: "UICTContentSizeCategoryL"
         case .ax5: "UICTContentSizeCategoryAccessibilityXXXL"
         }
     }
@@ -60,29 +67,18 @@ final class ReviewDriver {
     private var stepIndex = 0
     private var notes: [String] = []
 
-    /// Where PNGs go. Override with `TEST_RUNNER_PC_UI_OUTPUT_ROOT=<path>`.
-    static var outputRoot: URL {
-        let configured = ProcessInfo.processInfo.environment["PC_UI_OUTPUT_ROOT"]
-        return URL(fileURLWithPath: configured ?? "/tmp/petcompanion-ui", isDirectory: true)
-    }
-
-    /// Text size for this run. Override with `TEST_RUNNER_PC_UI_TEXT_SIZE=ax5`.
-    static var configuredTextSize: ReviewTextSize {
-        ProcessInfo.processInfo.environment["PC_UI_TEXT_SIZE"]
-            .flatMap(ReviewTextSize.init(rawValue:)) ?? .standard
-    }
-
-    /// Appearance for this run. Override with `TEST_RUNNER_PC_UI_APPEARANCE=dark`.
-    static var configuredAppearance: ReviewAppearance {
-        ProcessInfo.processInfo.environment["PC_UI_APPEARANCE"]
-            .flatMap(ReviewAppearance.init(rawValue:)) ?? .light
-    }
+    /// Where PNGs go.
+    ///
+    /// A plain constant rather than an environment override: `TEST_RUNNER_`
+    /// values do not reach the runner under `xcodebuild test` here, so an
+    /// "override" would have been documented, accepted, and ignored.
+    static let outputRoot = URL(fileURLWithPath: "/tmp/petcompanion-ui", isDirectory: true)
 
     init(
         scenario: String,
         testCase: XCTestCase,
-        textSize: ReviewTextSize = ReviewDriver.configuredTextSize,
-        appearance: ReviewAppearance = ReviewDriver.configuredAppearance
+        textSize: ReviewTextSize,
+        appearance: ReviewAppearance
     ) {
         self.scenario = scenario
         self.testCase = testCase
@@ -103,11 +99,11 @@ final class ReviewDriver {
     func launch() {
         resetOutputDirectory()
 
-        var arguments = ["-PetCompanionBackend", "mock"]
-        if let category = textSize.contentSizeCategoryName {
-            arguments += ["-UIPreferredContentSizeCategoryName", category]
-        }
-        arguments += ["-UIUserInterfaceStyle", appearance.userInterfaceStyleArgument]
+        let arguments = [
+            "-PetCompanionBackend", "mock",
+            "-UIPreferredContentSizeCategoryName", textSize.contentSizeCategoryName,
+            "-UIUserInterfaceStyle", appearance.userInterfaceStyleArgument,
+        ]
         app.launchArguments = arguments
         app.launch()
 
@@ -122,8 +118,32 @@ final class ReviewDriver {
 
     /// Screenshots the whole screen, attaches it, and writes a PNG.
     /// Returns the PNG path so a test can log it.
+    ///
+    /// The keyboard is put away first. That is not cosmetic: the QuickType
+    /// bar above it (`SystemInputAssistantView`) is where iOS offers saved
+    /// AutoFill credentials, and it was rendering a real address into form
+    /// screenshots. It also means a reviewer sees the whole form instead of
+    /// the top half of one.
+    ///
+    /// Refuses to write anything still showing an email address the harness
+    /// did not type. See `foreignEmailAddressesOnScreen()`.
     @discardableResult
-    func capture(_ name: String) -> URL? {
+    func capture(_ name: String, dismissingKeyboard: Bool = true) -> URL? {
+        // A system prompt in a screenshot tells a reviewer nothing about this
+        // app and hides the screen that was meant to be reviewed.
+        dismissSystemPrompt()
+        if dismissingKeyboard { dismissKeyboard() }
+
+        let intruders = foreignEmailAddressesOnScreen()
+        guard intruders.isEmpty else {
+            note(
+                "REFUSED to capture \"\(name)\": the screen is showing "
+                    + "\(intruders.count) address(es) the harness never typed. "
+                    + "Reset the simulator keychain (see README) and re-run."
+            )
+            return nil
+        }
+
         stepIndex += 1
         let screenshot = XCUIScreen.main.screenshot()
         let label = String(format: "%02d-%@", stepIndex, Self.slug(name))
@@ -145,6 +165,49 @@ final class ReviewDriver {
         }
     }
 
+    /// Every email address currently on screen that the harness did not put
+    /// there itself.
+    ///
+    /// This exists because of a real incident, not as a theoretical control.
+    /// iOS offered a saved iCloud Keychain credential over the password
+    /// field and rendered the machine owner's actual personal address into a
+    /// screenshot. Screenshots are the whole output of this harness and get
+    /// read and passed around, so a capture showing someone's real address is
+    /// a leak, not a cosmetic defect.
+    ///
+    /// The fix is to reset the simulator keychain so AutoFill has nothing to
+    /// offer (see README). This check is the backstop that makes a
+    /// regression loud instead of silent.
+    func foreignEmailAddressesOnScreen() -> [String] {
+        let expected: Set<String> = [
+            AppNavigator.reviewerEmail,
+            "you@example.com", // the app's own placeholder text
+        ]
+        let containsAt = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "@", "@")
+        let candidates = app.staticTexts.matching(containsAt).allElementsBoundByIndex
+            + app.textFields.matching(containsAt).allElementsBoundByIndex
+            + app.buttons.matching(containsAt).allElementsBoundByIndex
+
+        var found: Set<String> = []
+        for element in candidates {
+            for text in [element.label, element.value as? String].compactMap({ $0 }) {
+                for address in Self.emailAddresses(in: text) where !expected.contains(address) {
+                    found.insert(address)
+                }
+            }
+        }
+        return found.sorted()
+    }
+
+    private static func emailAddresses(in text: String) -> [String] {
+        let pattern = #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        return regex.matches(in: text, range: range).compactMap {
+            Range($0.range, in: text).map { String(text[$0]) }
+        }
+    }
+
     /// Records something a reviewer needs to know: a surface that was not
     /// reachable, a control that never appeared, a piece of state the mock
     /// backend does not provide.
@@ -158,8 +221,7 @@ final class ReviewDriver {
     func finish() {
         var lines = [
             "scenario: \(scenario)",
-            "text size: \(textSize.rawValue)"
-                + (textSize.contentSizeCategoryName.map { " (\($0))" } ?? " (device default)"),
+            "text size: \(textSize.rawValue) (\(textSize.contentSizeCategoryName))",
             "appearance: \(appearance.rawValue)",
             "backend: mock (in-memory fixtures, no network, no real account)",
             "captured: \(stepIndex) screenshot(s)",
@@ -186,9 +248,11 @@ final class ReviewDriver {
             note("never appeared: \(description)")
             return false
         }
-        if !element.isHittable {
-            scrollToReveal(element)
-        }
+        // The software keyboard covers the bottom third of the screen, which
+        // in this app is exactly where the primary action of every form sits.
+        if !element.isHittable { dismissSystemPrompt() }
+        if !element.isHittable { dismissKeyboard() }
+        if !element.isHittable { scrollToReveal(element) }
         guard element.isHittable else {
             note("found but not tappable (likely clipped off-screen): \(description)")
             return false
@@ -214,24 +278,65 @@ final class ReviewDriver {
     }
 
     /// Types into a text field, clearing anything already there.
+    ///
+    /// The keyboard raised by the *previous* field is what usually hides the
+    /// next one, so it is put away before this field is looked for.
     @discardableResult
     func type(_ text: String, into field: XCUIElement, describedAs description: String) -> Bool {
         guard field.waitForExistence(timeout: 12) else {
             note("never appeared: \(description)")
             return false
         }
+        if !field.isHittable { dismissSystemPrompt() }
+        if !field.isHittable { dismissKeyboard() }
         if !field.isHittable { scrollToReveal(field) }
         guard field.isHittable else {
             note("found but not tappable: \(description)")
             return false
         }
-        field.tap()
-        if let existing = field.value as? String, !existing.isEmpty,
-           field.placeholderValue != existing {
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
+
+        // Two separate hazards, both hit on the second field of a form:
+        //
+        //  * typing while the keyboard is still animating in silently drops
+        //    the text, so the keyboard is waited for and the result checked;
+        //  * `XCUIElement.tap()` on this app's SecureField lands but does not
+        //    move focus, so a tap at the element's own centre coordinate is
+        //    the second attempt. That is derived from the element's frame,
+        //    not guessed at from screen proportions.
+        for attempt in 1...3 {
+            if attempt == 2 {
+                field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            } else {
+                field.tap()
+            }
+            declinePasswordAutoFill()
+            guard app.keyboards.element.waitForExistence(timeout: 5) else {
+                note("keyboard never came up for \(description); has keyboard focus: \(field.hasFocus)")
+                continue
+            }
+            clearExistingText(in: field)
+            field.typeText(text)
+            if contents(of: field, match: text) { return true }
+            note("input did not stick on attempt \(attempt): \(description)")
         }
-        field.typeText(text)
-        return true
+        note("could not enter text into \(description)")
+        return false
+    }
+
+    /// Secure fields report their contents as bullets, so a length match is
+    /// the most a black-box driver can confirm for one.
+    private func contents(of field: XCUIElement, match text: String) -> Bool {
+        guard let value = field.value as? String else { return false }
+        if value == field.placeholderValue { return false }
+        return value == text || value.count == text.count
+    }
+
+    private func clearExistingText(in field: XCUIElement) {
+        guard let existing = field.value as? String,
+              !existing.isEmpty,
+              existing != field.placeholderValue
+        else { return }
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
     }
 
     /// Waits until any one of the candidates exists, and returns it.
@@ -250,17 +355,125 @@ final class ReviewDriver {
     func waitForScreen(_ candidates: [XCUIElement], describedAs description: String, timeout: TimeInterval = 15) -> Bool {
         if waitForAny(candidates, timeout: timeout) != nil { return true }
         note("screen never appeared: \(description)")
+        dumpElementTreeIfRequested(reason: "screen never appeared: \(description)")
         return false
     }
 
-    /// Scrolls the innermost scrollable container until `element` is hittable.
+    /// Set to true while debugging a scenario that will not advance.
+    ///
+    /// Off by default because it is hundreds of lines per failure, but when a
+    /// screen does not arrive the tree is the entire explanation — every
+    /// blocker found while building this harness (the strong-password panel,
+    /// the QuickType suggestion, the save-password alert) was invisible in
+    /// the logs and obvious in the tree. Not an environment variable: see the
+    /// note in `ReviewScenarioCase` about `TEST_RUNNER_` values not arriving.
+    static let dumpsElementTree = false
+
+    func dumpElementTreeIfRequested(reason: String) {
+        guard Self.dumpsElementTree else { return }
+        print("PC_UI_TREE ---- \(reason) ----\n\(app.debugDescription)\nPC_UI_TREE ---- end ----")
+    }
+
+    /// Dismisses a system prompt sitting over the app, declining it.
+    ///
+    /// After the account form submits, iOS offers "Save Password?". It is
+    /// modal, so it blocks the next step, and the only acceptable answer here
+    /// is "Not Now": saving would write a credential into the simulator
+    /// keychain, which is precisely the state that later produces AutoFill
+    /// suggestions in screenshots.
+    ///
+    /// The affirmative buttons are deliberately absent from this list. This
+    /// helper can only ever decline.
+    @discardableResult
+    func dismissSystemPrompt() -> Bool {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+
+        // Inside a real alert, generic titles are unambiguous.
+        for source in [app, springboard] {
+            let alert = source.alerts.firstMatch
+            guard alert.exists else { continue }
+            let label = alert.label
+            for title in ["Not Now", "Don't Allow", "Dismiss", "Cancel", "Close"] {
+                let button = alert.buttons[title]
+                if button.exists, button.isHittable {
+                    button.tap()
+                    note("declined the system prompt “\(label)” with “\(title)”")
+                    return true
+                }
+            }
+            note("a system prompt “\(label)” appeared with no safe way to decline it")
+        }
+
+        // "Save Password?" is not published as an alert — it is a plain
+        // window in the app's own hierarchy. Only titles that could not
+        // possibly belong to this app are matched loose like this; a bare
+        // "Cancel" or "Close" would collide with the app's own sheets.
+        for title in ["Not Now", "Don't Allow"] {
+            for source in [app, springboard] {
+                let button = source.buttons[title]
+                if button.exists, button.isHittable {
+                    button.tap()
+                    note("declined a system prompt with “\(title)”")
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    /// Declines the system "Use Strong Password?" panel.
+    ///
+    /// ON-02's password field declares `.newPassword`, so iOS puts its
+    /// AutoFill panel up *instead of* the keyboard. The field is focused the
+    /// whole time, which is what made this look like a dropped tap: the
+    /// keyboard query simply never became true. Declining hands the field
+    /// back to the normal keyboard.
+    ///
+    /// The harness always declines rather than accepting the generated
+    /// password: it types its own obviously-synthetic value, and it has no
+    /// business saving anything into the Passwords app.
+    func declinePasswordAutoFill() {
+        guard app.staticTexts["Use Strong Password?"].exists else { return }
+        let close = app.buttons["xmark"]
+        guard close.waitForExistence(timeout: 2), close.isHittable else {
+            note("the “Use Strong Password?” panel appeared but could not be closed")
+            return
+        }
+        close.tap()
+        note("declined the system “Use Strong Password?” panel on the password field")
+    }
+
+    /// Puts the software keyboard away.
+    ///
+    /// Return resigns first responder for the plain single-line fields this
+    /// app uses. There is deliberately no blind coordinate-tap fallback: a
+    /// guessed tap is how a driver ends up on a screen it did not mean to
+    /// open and screenshots it as if nothing happened.
+    func dismissKeyboard() {
+        guard app.keyboards.element.exists else { return }
+        app.typeText("\n")
+        if app.keyboards.element.waitForNonExistence(timeout: 3) { return }
+        note("keyboard would not dismiss; later steps may be covered by it")
+    }
+
+    /// The main content scroller.
+    ///
+    /// Not `app.scrollViews.firstMatch`: the keyboard contributes its own
+    /// small scroll views, and index order put one of those first, so swipes
+    /// were being delivered to a 44pt strip inside the keyboard instead of to
+    /// the form. Choosing by area is what makes this reliable.
+    var primaryScrollContainer: XCUIElement? {
+        let candidates = app.scrollViews.allElementsBoundByIndex
+            + app.collectionViews.allElementsBoundByIndex
+            + app.tables.allElementsBoundByIndex
+        return candidates
+            .filter { $0.exists && $0.frame.height > 200 }
+            .max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+    }
+
+    /// Scrolls the main container until `element` is hittable.
     func scrollToReveal(_ element: XCUIElement, maxSwipes: Int = 8) {
-        let containers = [
-            app.scrollViews.firstMatch,
-            app.collectionViews.firstMatch,
-            app.tables.firstMatch,
-        ]
-        guard let container = containers.first(where: \.exists) else { return }
+        guard let container = primaryScrollContainer else { return }
         var swipes = 0
         while !element.isHittable, swipes < maxSwipes {
             container.swipeUp()
@@ -275,9 +488,14 @@ final class ReviewDriver {
 
     /// Scrolls back to the top of the current scroll view, so the next
     /// capture starts from a predictable place.
+    /// Scrolls the main container down by `swipes` screenfuls.
+    func scrollDown(_ swipes: Int = 1) {
+        guard let container = primaryScrollContainer else { return }
+        for _ in 0..<swipes { container.swipeUp() }
+    }
+
     func scrollToTop(maxSwipes: Int = 8) {
-        let container = app.scrollViews.firstMatch
-        guard container.exists else { return }
+        guard let container = primaryScrollContainer else { return }
         for _ in 0..<maxSwipes { container.swipeDown() }
     }
 

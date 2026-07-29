@@ -65,6 +65,10 @@ struct AppNavigator {
             into: passwordField,
             describedAs: "password field on ON-02"
         )
+        // Put the keyboard away before submitting. Its QuickType bar is a
+        // separate window that sits over the form, and leaving it up made the
+        // submit tap unreliable as well as polluting the screenshot.
+        driver.dismissKeyboard()
         if capturing { driver.capture("create-account") }
 
         guard driver.tap(

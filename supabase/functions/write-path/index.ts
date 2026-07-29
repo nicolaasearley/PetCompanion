@@ -1,26 +1,61 @@
 import type {
   AcceptInvitationPayload,
   AcceptRecommendationPayload,
+  ArchiveMedicationSchedulePayload,
   ArchiveSchedulePayload,
   CancelOccurrencePayload,
   ClearSocializationExclusionPayload,
   CommandEnvelope,
   CommandFailure,
   CommandSuccess,
+  CompleteMedicationOccurrencePayload,
   CompleteOccurrencePayload,
   CreateHouseholdPayload,
   CreateInvitationPayload,
+  CreateMedicationSchedulePayload,
+  CreateMilestonePayload,
+  PrepareMilestoneMediaPayload,
+  CompleteMilestoneMediaPayload,
+  FailMilestoneMediaPayload,
+  RemoveMilestoneMediaPayload,
+  CreateEventPayload,
   CreatePetPayload,
+  CreateProviderPayload,
   CreateRecurringTaskPayload,
   CreateTaskPayload,
   DeclineInvitationPayload,
+  EditEventPayload,
+  CancelEventPayload,
+  ArchiveEventPayload,
+  EditMedicationSchedulePayload,
+  EditMilestonePayload,
   EditOccurrencePayload,
+  EditProviderPayload,
   EditScheduleFuturePayload,
   EditSocializationRecordPayload,
+  CreateCareNotePayload,
+  EditCareNotePayload,
+  PrepareCareNoteMediaPayload,
+  CompleteCareNoteMediaPayload,
+  FailCareNoteMediaPayload,
+  RemoveCareNoteMediaPayload,
+  EditGroomingPayload,
+  EditVaccinationPayload,
+  EditWeightPayload,
+  RecordGroomingPayload,
   RecordSocializationPayload,
+  RecordVaccinationPayload,
+  RecordWeightPayload,
   LogTrainingSessionPayload,
   RecurrenceRulePayload,
+  RemoveCareNotePayload,
+  RemoveMilestonePayload,
+  RemoveProviderPayload,
   RemoveSocializationRecordPayload,
+  RemoveGroomingPayload,
+  RemoveVaccinationPayload,
+  RemoveWeightPayload,
+  RegisterDeviceTokenPayload,
   RescheduleOccurrencePayload,
   RevokeInvitationPayload,
   SetDefaultCapacityPayload,
@@ -29,6 +64,7 @@ import type {
   SkipItemPayload,
   StartTrainingGoalPayload,
   TrainingGoalRef,
+  UnregisterDeviceTokenPayload,
   UpdateTrainingProgressPayload,
   WritePathCommand,
   SnoozeOccurrencePayload,
@@ -76,12 +112,48 @@ const implementedCommands: ReadonlySet<WritePathCommand> = new Set([
   "remove_socialization_record",
   "set_socialization_exclusion",
   "clear_socialization_exclusion",
+  "record_weight",
+  "edit_weight",
+  "remove_weight",
+  "create_provider",
+  "edit_provider",
+  "remove_provider",
+  "create_medication_schedule",
+  "edit_medication_schedule",
+  "archive_medication_schedule",
+  "complete_medication_occurrence",
+  "record_vaccination",
+  "edit_vaccination",
+  "remove_vaccination",
+  "record_grooming",
+  "edit_grooming",
+  "remove_grooming",
+  "create_care_note",
+  "edit_care_note",
+  "remove_care_note",
+  "prepare_care_note_media",
+  "complete_care_note_media",
+  "fail_care_note_media",
+  "remove_care_note_media",
   "start_training_goal",
   "pause_training_goal",
   "resume_training_goal",
   "retire_training_goal",
   "update_training_progress",
   "log_training_session",
+  "create_milestone",
+  "edit_milestone",
+  "remove_milestone",
+  "prepare_milestone_media",
+  "complete_milestone_media",
+  "fail_milestone_media",
+  "remove_milestone_media",
+  "create_event",
+  "edit_event",
+  "cancel_event",
+  "archive_event",
+  "register_device_token",
+  "unregister_device_token",
 ]);
 
 Deno.serve(async (request) => {
@@ -188,6 +260,53 @@ Deno.serve(async (request) => {
       assertSetSocializationExclusionPayload(envelope.payload);
     } else if (envelope.command === "clear_socialization_exclusion") {
       assertClearSocializationExclusionPayload(envelope.payload);
+    } else if (envelope.command === "record_weight") {
+      assertRecordWeightPayload(envelope.payload);
+    } else if (envelope.command === "edit_weight") {
+      assertEditWeightPayload(envelope.payload);
+    } else if (envelope.command === "remove_weight") {
+      assertRemoveWeightPayload(envelope.payload);
+    } else if (envelope.command === "create_provider") {
+      assertCreateProviderPayload(envelope.payload);
+      await assertActiveMembership(user.id, envelope.payload.household_id);
+    } else if (envelope.command === "edit_provider") {
+      assertEditProviderPayload(envelope.payload);
+    } else if (envelope.command === "remove_provider") {
+      assertRemoveProviderPayload(envelope.payload);
+    } else if (envelope.command === "create_medication_schedule") {
+      assertCreateMedicationSchedulePayload(envelope.payload);
+    } else if (envelope.command === "edit_medication_schedule") {
+      assertEditMedicationSchedulePayload(envelope.payload);
+    } else if (envelope.command === "archive_medication_schedule") {
+      assertArchiveMedicationSchedulePayload(envelope.payload);
+    } else if (envelope.command === "complete_medication_occurrence") {
+      assertCompleteMedicationOccurrencePayload(envelope.payload);
+    } else if (envelope.command === "record_vaccination") {
+      assertRecordVaccinationPayload(envelope.payload);
+    } else if (envelope.command === "edit_vaccination") {
+      assertEditVaccinationPayload(envelope.payload);
+    } else if (envelope.command === "remove_vaccination") {
+      assertRemoveVaccinationPayload(envelope.payload);
+    } else if (envelope.command === "record_grooming") {
+      assertRecordGroomingPayload(envelope.payload);
+    } else if (envelope.command === "edit_grooming") {
+      assertEditGroomingPayload(envelope.payload);
+    } else if (envelope.command === "remove_grooming") {
+      assertRemoveGroomingPayload(envelope.payload);
+    } else if (envelope.command === "create_care_note") {
+      assertCreateCareNotePayload(envelope.payload);
+    } else if (envelope.command === "edit_care_note") {
+      assertEditCareNotePayload(envelope.payload);
+    } else if (envelope.command === "remove_care_note") {
+      assertRemoveCareNotePayload(envelope.payload);
+    } else if (envelope.command === "prepare_care_note_media") {
+      assertPrepareCareNoteMediaPayload(envelope.payload);
+    } else if (envelope.command === "complete_care_note_media") {
+      assertCompleteCareNoteMediaPayload(envelope.payload);
+    } else if (envelope.command === "fail_care_note_media") {
+      assertFailCareNoteMediaPayload(envelope.payload);
+    } else if (envelope.command === "remove_care_note_media") {
+      assertRemoveCareNoteMediaPayload(envelope.payload);
     } else if (envelope.command === "start_training_goal") {
       assertStartTrainingGoalPayload(envelope.payload);
     } else if (
@@ -200,6 +319,33 @@ Deno.serve(async (request) => {
       assertUpdateTrainingProgressPayload(envelope.payload);
     } else if (envelope.command === "log_training_session") {
       assertLogTrainingSessionPayload(envelope.payload);
+    } else if (envelope.command === "create_milestone") {
+      assertCreateMilestonePayload(envelope.payload);
+    } else if (envelope.command === "edit_milestone") {
+      assertEditMilestonePayload(envelope.payload);
+    } else if (envelope.command === "remove_milestone") {
+      assertRemoveMilestonePayload(envelope.payload);
+    } else if (envelope.command === "prepare_milestone_media") {
+      assertPrepareMilestoneMediaPayload(envelope.payload);
+    } else if (envelope.command === "complete_milestone_media") {
+      assertCompleteMilestoneMediaPayload(envelope.payload);
+    } else if (envelope.command === "fail_milestone_media") {
+      assertFailMilestoneMediaPayload(envelope.payload);
+    } else if (envelope.command === "remove_milestone_media") {
+      assertRemoveMilestoneMediaPayload(envelope.payload);
+    } else if (envelope.command === "create_event") {
+      assertCreateEventPayload(envelope.payload);
+      await assertActiveMembership(user.id, envelope.payload.household_id);
+    } else if (envelope.command === "edit_event") {
+      assertEditEventPayload(envelope.payload);
+    } else if (envelope.command === "cancel_event") {
+      assertCancelEventPayload(envelope.payload);
+    } else if (envelope.command === "archive_event") {
+      assertArchiveEventPayload(envelope.payload);
+    } else if (envelope.command === "register_device_token") {
+      assertRegisterDeviceTokenPayload(envelope.payload);
+    } else if (envelope.command === "unregister_device_token") {
+      assertUnregisterDeviceTokenPayload(envelope.payload);
     } else {
       assertSkipItemPayload(envelope.payload);
     }
@@ -611,6 +757,727 @@ function assertSetSocializationExclusionPayload(value: unknown): asserts value i
 function assertClearSocializationExclusionPayload(value: unknown): asserts value is ClearSocializationExclusionPayload {
   if (!isRecord(value)) throw new Error("payload must be an object.");
   assertNonEmptyString(value.exclusion_id, "payload.exclusion_id");
+}
+
+// ---------------------------------------------------------------------------
+// Care: weight + providers (F10). No medication scheduling.
+// ---------------------------------------------------------------------------
+
+const weightUnits = ["kg", "lb"] as const;
+const providerKinds = ["veterinarian", "groomer", "trainer", "other"] as const;
+
+function assertWeightValue(value: unknown, field: string): void {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value <= 0) throw new Error(`${field} must be a positive number.`);
+    return;
+  }
+  if (typeof value !== "string" || value.trim() === "") throw new Error(`${field} is required.`);
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${field} must be a positive number.`);
+}
+
+function assertRecordWeightPayload(value: unknown): asserts value is RecordWeightPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.pet_id, "payload.pet_id");
+  if (value.measurement_id !== undefined) assertNonEmptyString(value.measurement_id, "payload.measurement_id");
+  assertWeightValue(value.value, "payload.value");
+  if (!weightUnits.includes(value.unit as typeof weightUnits[number])) {
+    throw new Error("payload.unit must be kg or lb.");
+  }
+  if (value.effective_date !== undefined) assertLocalDate(value.effective_date, "payload.effective_date");
+  if (value.note !== undefined && typeof value.note !== "string") {
+    throw new Error("payload.note must be a string.");
+  }
+}
+
+function assertEditWeightPayload(value: unknown): asserts value is EditWeightPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.measurement_id, "payload.measurement_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.value !== undefined) assertWeightValue(value.value, "payload.value");
+  if (value.unit !== undefined && !weightUnits.includes(value.unit as typeof weightUnits[number])) {
+    throw new Error("payload.unit must be kg or lb.");
+  }
+  if (value.effective_date !== undefined) assertLocalDate(value.effective_date, "payload.effective_date");
+  if (value.note !== undefined && value.note !== null && typeof value.note !== "string") {
+    throw new Error("payload.note must be a string or null.");
+  }
+}
+
+function assertRemoveWeightPayload(value: unknown): asserts value is RemoveWeightPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.measurement_id, "payload.measurement_id");
+}
+
+function assertCreateProviderPayload(value: unknown): asserts value is CreateProviderPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.household_id, "payload.household_id");
+  if (value.provider_id !== undefined) assertNonEmptyString(value.provider_id, "payload.provider_id");
+  assertNonEmptyString(value.name, "payload.name");
+  if (!providerKinds.includes(value.kind as typeof providerKinds[number])) {
+    throw new Error("payload.kind must be veterinarian, groomer, trainer, or other.");
+  }
+  for (const field of ["phone", "address", "notes"] as const) {
+    if (value[field] !== undefined && typeof value[field] !== "string") {
+      throw new Error(`payload.${field} must be a string.`);
+    }
+  }
+}
+
+function assertEditProviderPayload(value: unknown): asserts value is EditProviderPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.provider_id, "payload.provider_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.name !== undefined) assertNonEmptyString(value.name, "payload.name");
+  if (value.kind !== undefined && !providerKinds.includes(value.kind as typeof providerKinds[number])) {
+    throw new Error("payload.kind must be veterinarian, groomer, trainer, or other.");
+  }
+  for (const field of ["phone", "address", "notes"] as const) {
+    if (value[field] !== undefined && value[field] !== null && typeof value[field] !== "string") {
+      throw new Error(`payload.${field} must be a string or null.`);
+    }
+  }
+}
+
+function assertRemoveProviderPayload(value: unknown): asserts value is RemoveProviderPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.provider_id, "payload.provider_id");
+}
+
+const medicationProvenances = ["owner_entered", "professional_instruction"] as const;
+const recurrenceTypes = [
+  "once",
+  "daily",
+  "weekdays",
+  "every_n_days",
+  "weekly",
+  "monthly_safe",
+  "interval_after_completion",
+] as const;
+const timePolicies = ["exact_time", "window", "anytime"] as const;
+const windowRefs = ["morning", "midday", "afternoon", "evening", "sleep"] as const;
+
+function assertMedicationRecurrence(value: unknown, field: string): asserts value is Record<string, unknown> {
+  if (!isRecord(value)) throw new Error(`${field} must be an object.`);
+  if (!recurrenceTypes.includes(value.type as typeof recurrenceTypes[number])) {
+    throw new Error(`${field}.type must be a supported recurrence.`);
+  }
+  assertLocalDate(value.anchor_date, `${field}.anchor_date`);
+  if (!timePolicies.includes(value.time_policy as typeof timePolicies[number])) {
+    throw new Error(`${field}.time_policy must be exact_time, window, or anytime.`);
+  }
+  if (value.time_policy === "exact_time") {
+    if (typeof value.exact_time !== "string" || !/^\d{2}:\d{2}$/.test(value.exact_time)) {
+      throw new Error(`${field}.exact_time must be HH:MM.`);
+    }
+  } else if (value.time_policy === "window") {
+    if (!windowRefs.includes(value.window_ref as typeof windowRefs[number])) {
+      throw new Error(`${field}.window_ref is invalid.`);
+    }
+  }
+  if (
+    (value.type === "every_n_days" || value.type === "interval_after_completion")
+    && (typeof value.interval !== "number" || !Number.isInteger(value.interval) || value.interval <= 0)
+  ) {
+    throw new Error(`${field}.interval must be a positive integer.`);
+  }
+}
+
+function assertCreateMedicationSchedulePayload(
+  value: unknown,
+): asserts value is CreateMedicationSchedulePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.pet_id, "payload.pet_id");
+  if (value.medication_schedule_id !== undefined) {
+    assertNonEmptyString(value.medication_schedule_id, "payload.medication_schedule_id");
+  }
+  assertNonEmptyString(value.medication_name, "payload.medication_name");
+  if (value.dose_text !== undefined && typeof value.dose_text !== "string") {
+    throw new Error("payload.dose_text must be a string.");
+  }
+  if (value.instructions_text !== undefined && typeof value.instructions_text !== "string") {
+    throw new Error("payload.instructions_text must be a string.");
+  }
+  if (
+    value.provenance !== undefined
+    && !medicationProvenances.includes(value.provenance as typeof medicationProvenances[number])
+  ) {
+    throw new Error("payload.provenance must be owner_entered or professional_instruction.");
+  }
+  if (value.provider_id !== undefined) assertNonEmptyString(value.provider_id, "payload.provider_id");
+  assertMedicationRecurrence(value.recurrence, "payload.recurrence");
+}
+
+function assertEditMedicationSchedulePayload(
+  value: unknown,
+): asserts value is EditMedicationSchedulePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.medication_schedule_id, "payload.medication_schedule_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.medication_name !== undefined) {
+    assertNonEmptyString(value.medication_name, "payload.medication_name");
+  }
+  if (value.dose_text !== undefined && value.dose_text !== null && typeof value.dose_text !== "string") {
+    throw new Error("payload.dose_text must be a string or null.");
+  }
+  if (
+    value.instructions_text !== undefined
+    && value.instructions_text !== null
+    && typeof value.instructions_text !== "string"
+  ) {
+    throw new Error("payload.instructions_text must be a string or null.");
+  }
+  if (
+    value.provenance !== undefined
+    && !medicationProvenances.includes(value.provenance as typeof medicationProvenances[number])
+  ) {
+    throw new Error("payload.provenance must be owner_entered or professional_instruction.");
+  }
+  if (value.provider_id !== undefined && value.provider_id !== null) {
+    assertNonEmptyString(value.provider_id, "payload.provider_id");
+  }
+  if (value.recurrence !== undefined) {
+    assertMedicationRecurrence(value.recurrence, "payload.recurrence");
+  }
+}
+
+function assertArchiveMedicationSchedulePayload(
+  value: unknown,
+): asserts value is ArchiveMedicationSchedulePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.medication_schedule_id, "payload.medication_schedule_id");
+  assertExpectedRevision(value.expected_revision);
+}
+
+function assertCompleteMedicationOccurrencePayload(
+  value: unknown,
+): asserts value is CompleteMedicationOccurrencePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.occurrence_id, "payload.occurrence_id");
+  if (value.note !== undefined && typeof value.note !== "string") {
+    throw new Error("payload.note must be a string.");
+  }
+  if (
+    value.acknowledged_recent_completion !== undefined
+    && typeof value.acknowledged_recent_completion !== "boolean"
+  ) {
+    throw new Error("payload.acknowledged_recent_completion must be boolean.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Care vaccinations (US-070) — history only; next_due never computed.
+// ---------------------------------------------------------------------------
+
+const vaccinationProvenances = ["owner_entered", "professional_instruction"] as const;
+
+function assertRecordVaccinationPayload(value: unknown): asserts value is RecordVaccinationPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.pet_id, "payload.pet_id");
+  if (value.vaccination_id !== undefined) {
+    assertNonEmptyString(value.vaccination_id, "payload.vaccination_id");
+  }
+  assertNonEmptyString(value.vaccine_name, "payload.vaccine_name");
+  if (value.effective_date !== undefined) {
+    assertLocalDate(value.effective_date, "payload.effective_date");
+  }
+  // Empty string = no next-due fact (iOS encodes clear/omit as "").
+  if (value.next_due_date !== undefined && value.next_due_date !== "") {
+    assertLocalDate(value.next_due_date, "payload.next_due_date");
+  }
+  if (
+    value.provenance !== undefined
+    && !vaccinationProvenances.includes(value.provenance as typeof vaccinationProvenances[number])
+  ) {
+    throw new Error("payload.provenance must be owner_entered or professional_instruction.");
+  }
+  if (value.provider_id !== undefined) {
+    assertNonEmptyString(value.provider_id, "payload.provider_id");
+  }
+  if (value.note !== undefined && typeof value.note !== "string") {
+    throw new Error("payload.note must be a string.");
+  }
+}
+
+function assertEditVaccinationPayload(value: unknown): asserts value is EditVaccinationPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.vaccination_id, "payload.vaccination_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.vaccine_name !== undefined) {
+    assertNonEmptyString(value.vaccine_name, "payload.vaccine_name");
+  }
+  if (value.effective_date !== undefined) {
+    assertLocalDate(value.effective_date, "payload.effective_date");
+  }
+  // Empty string clears next_due (SQL nullif); null also clears.
+  if (
+    value.next_due_date !== undefined
+    && value.next_due_date !== null
+    && value.next_due_date !== ""
+  ) {
+    assertLocalDate(value.next_due_date, "payload.next_due_date");
+  }
+  if (
+    value.provenance !== undefined
+    && !vaccinationProvenances.includes(value.provenance as typeof vaccinationProvenances[number])
+  ) {
+    throw new Error("payload.provenance must be owner_entered or professional_instruction.");
+  }
+  if (value.provider_id !== undefined && value.provider_id !== null) {
+    assertNonEmptyString(value.provider_id, "payload.provider_id");
+  }
+  if (value.note !== undefined && value.note !== null && typeof value.note !== "string") {
+    throw new Error("payload.note must be a string or null.");
+  }
+}
+
+function assertRemoveVaccinationPayload(value: unknown): asserts value is RemoveVaccinationPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.vaccination_id, "payload.vaccination_id");
+}
+
+// ---------------------------------------------------------------------------
+// Care grooming (F10 / US-076) — history only; next_due never computed.
+// ---------------------------------------------------------------------------
+
+const groomingActivityTypes = [
+  "brushing",
+  "nails",
+  "bath",
+  "teeth",
+  "ears",
+  "other",
+] as const;
+
+function assertRecordGroomingPayload(value: unknown): asserts value is RecordGroomingPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.pet_id, "payload.pet_id");
+  if (value.grooming_id !== undefined) {
+    assertNonEmptyString(value.grooming_id, "payload.grooming_id");
+  }
+  if (!groomingActivityTypes.includes(value.activity_type as typeof groomingActivityTypes[number])) {
+    throw new Error(
+      "payload.activity_type must be brushing, nails, bath, teeth, ears, or other.",
+    );
+  }
+  if (value.effective_date !== undefined) {
+    assertLocalDate(value.effective_date, "payload.effective_date");
+  }
+  if (value.next_due_date !== undefined) {
+    assertLocalDate(value.next_due_date, "payload.next_due_date");
+  }
+  if (value.note !== undefined && typeof value.note !== "string") {
+    throw new Error("payload.note must be a string.");
+  }
+}
+
+function assertEditGroomingPayload(value: unknown): asserts value is EditGroomingPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.grooming_id, "payload.grooming_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.activity_type !== undefined) {
+    if (!groomingActivityTypes.includes(value.activity_type as typeof groomingActivityTypes[number])) {
+      throw new Error(
+        "payload.activity_type must be brushing, nails, bath, teeth, ears, or other.",
+      );
+    }
+  }
+  if (value.effective_date !== undefined) {
+    assertLocalDate(value.effective_date, "payload.effective_date");
+  }
+  if (value.next_due_date !== undefined && value.next_due_date !== null) {
+    assertLocalDate(value.next_due_date, "payload.next_due_date");
+  }
+  if (value.note !== undefined && value.note !== null && typeof value.note !== "string") {
+    throw new Error("payload.note must be a string or null.");
+  }
+}
+
+function assertRemoveGroomingPayload(value: unknown): asserts value is RemoveGroomingPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.grooming_id, "payload.grooming_id");
+}
+
+// ---------------------------------------------------------------------------
+// Care notes (US-077) — general_note only; document/Storage deferred.
+// ---------------------------------------------------------------------------
+
+const careNoteKinds = ["general_note", "document"] as const;
+const careNoteProvenances = ["owner_entered", "professional_instruction"] as const;
+
+function assertEmptyOrAbsentMediaRefs(value: unknown, field: string): void {
+  if (value === undefined || value === null) return;
+  if (!Array.isArray(value)) {
+    throw new Error(`${field} must be an array.`);
+  }
+  if (value.length > 0) {
+    throw new Error("attach documents via prepare_care_note_media.");
+  }
+}
+
+function assertCreateCareNotePayload(value: unknown): asserts value is CreateCareNotePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.pet_id, "payload.pet_id");
+  if (value.care_note_id !== undefined) {
+    assertNonEmptyString(value.care_note_id, "payload.care_note_id");
+  }
+  if (value.kind !== undefined) {
+    if (
+      typeof value.kind !== "string"
+      || !careNoteKinds.includes(value.kind as typeof careNoteKinds[number])
+    ) {
+      throw new Error("payload.kind must be general_note or document.");
+    }
+  }
+  assertNonEmptyString(value.body, "payload.body");
+  if (typeof value.body === "string" && value.body.trim().length > 8000) {
+    throw new Error("payload.body must be 8000 characters or fewer.");
+  }
+  if (value.title !== undefined) {
+    if (typeof value.title !== "string") {
+      throw new Error("payload.title must be a string.");
+    }
+    if (value.title.trim().length > 200) {
+      throw new Error("payload.title must be 200 characters or fewer.");
+    }
+  }
+  if (value.kind === "document") {
+    if (typeof value.title !== "string" || value.title.trim().length === 0) {
+      throw new Error("document notes require a title.");
+    }
+  }
+  if (value.effective_date !== undefined) {
+    assertLocalDate(value.effective_date, "payload.effective_date");
+  }
+  if (
+    value.provenance !== undefined
+    && !careNoteProvenances.includes(value.provenance as typeof careNoteProvenances[number])
+  ) {
+    throw new Error("payload.provenance must be owner_entered or professional_instruction.");
+  }
+  if (value.provider_id !== undefined) {
+    assertNonEmptyString(value.provider_id, "payload.provider_id");
+  }
+  assertEmptyOrAbsentMediaRefs(value.media_refs, "payload.media_refs");
+}
+
+function assertEditCareNotePayload(value: unknown): asserts value is EditCareNotePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.care_note_id, "payload.care_note_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.body !== undefined) {
+    assertNonEmptyString(value.body, "payload.body");
+    if (typeof value.body === "string" && value.body.trim().length > 8000) {
+      throw new Error("payload.body must be 8000 characters or fewer.");
+    }
+  }
+  if (value.title !== undefined && value.title !== null) {
+    if (typeof value.title !== "string") {
+      throw new Error("payload.title must be a string or null.");
+    }
+    if (value.title.trim().length > 200) {
+      throw new Error("payload.title must be 200 characters or fewer.");
+    }
+  }
+  if (value.effective_date !== undefined) {
+    assertLocalDate(value.effective_date, "payload.effective_date");
+  }
+  if (
+    value.provenance !== undefined
+    && !careNoteProvenances.includes(value.provenance as typeof careNoteProvenances[number])
+  ) {
+    throw new Error("payload.provenance must be owner_entered or professional_instruction.");
+  }
+  if (value.provider_id !== undefined && value.provider_id !== null) {
+    assertNonEmptyString(value.provider_id, "payload.provider_id");
+  }
+  assertEmptyOrAbsentMediaRefs(value.media_refs, "payload.media_refs");
+}
+
+function assertRemoveCareNotePayload(value: unknown): asserts value is RemoveCareNotePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.care_note_id, "payload.care_note_id");
+}
+
+const careNoteMediaMimeTypes = [
+  "image/jpeg",
+  "image/png",
+  "image/heic",
+  "image/webp",
+  "application/pdf",
+] as const;
+
+function assertPrepareCareNoteMediaPayload(
+  value: unknown,
+): asserts value is PrepareCareNoteMediaPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.care_note_id, "payload.care_note_id");
+  if (value.media_id !== undefined) assertNonEmptyString(value.media_id, "payload.media_id");
+  assertNonEmptyString(value.mime_type, "payload.mime_type");
+  if (
+    typeof value.mime_type === "string"
+    && !careNoteMediaMimeTypes.includes(value.mime_type as typeof careNoteMediaMimeTypes[number])
+  ) {
+    throw new Error("payload.mime_type must be an allowed image or PDF type.");
+  }
+  if (typeof value.byte_size !== "number" || !Number.isInteger(value.byte_size)) {
+    throw new Error("payload.byte_size must be an integer.");
+  }
+  if (value.byte_size <= 0 || value.byte_size > 10_485_760) {
+    throw new Error("payload.byte_size must be between 1 and 10485760.");
+  }
+  if (value.capture_time !== undefined) {
+    assertNonEmptyString(value.capture_time, "payload.capture_time");
+  }
+}
+
+function assertCompleteCareNoteMediaPayload(
+  value: unknown,
+): asserts value is CompleteCareNoteMediaPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.media_id, "payload.media_id");
+  if (value.byte_size !== undefined) {
+    if (typeof value.byte_size !== "number" || !Number.isInteger(value.byte_size)) {
+      throw new Error("payload.byte_size must be an integer.");
+    }
+    if (value.byte_size <= 0 || value.byte_size > 10_485_760) {
+      throw new Error("payload.byte_size must be between 1 and 10485760.");
+    }
+  }
+}
+
+function assertFailCareNoteMediaPayload(
+  value: unknown,
+): asserts value is FailCareNoteMediaPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.media_id, "payload.media_id");
+}
+
+function assertRemoveCareNoteMediaPayload(
+  value: unknown,
+): asserts value is RemoveCareNoteMediaPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.media_id, "payload.media_id");
+}
+
+// ---------------------------------------------------------------------------
+// Life milestones (F12) + household-private media attach (DM §12.6).
+// ---------------------------------------------------------------------------
+
+function assertCreateMilestonePayload(value: unknown): asserts value is CreateMilestonePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.pet_id, "payload.pet_id");
+  if (value.milestone_id !== undefined) assertNonEmptyString(value.milestone_id, "payload.milestone_id");
+  assertNonEmptyString(value.title, "payload.title");
+  if (typeof value.title === "string" && value.title.trim().length > 200) {
+    throw new Error("payload.title must be 200 characters or fewer.");
+  }
+  if (value.effective_date !== undefined) assertLocalDate(value.effective_date, "payload.effective_date");
+  if (value.note !== undefined && typeof value.note !== "string") {
+    throw new Error("payload.note must be a string.");
+  }
+  // Media attaches only via prepare_milestone_media after the text save.
+  if (value.media_refs !== undefined) {
+    throw new Error("payload.media_refs is not accepted on create_milestone; attach photos separately.");
+  }
+}
+
+function assertEditMilestonePayload(value: unknown): asserts value is EditMilestonePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.milestone_id, "payload.milestone_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.title !== undefined) assertNonEmptyString(value.title, "payload.title");
+  if (typeof value.title === "string" && value.title.trim().length > 200) {
+    throw new Error("payload.title must be 200 characters or fewer.");
+  }
+  if (value.effective_date !== undefined) assertLocalDate(value.effective_date, "payload.effective_date");
+  if (value.note !== undefined && value.note !== null && typeof value.note !== "string") {
+    throw new Error("payload.note must be a string or null.");
+  }
+  if (value.media_refs !== undefined) {
+    throw new Error("payload.media_refs is not accepted on edit_milestone; attach photos separately.");
+  }
+}
+
+function assertRemoveMilestonePayload(value: unknown): asserts value is RemoveMilestonePayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.milestone_id, "payload.milestone_id");
+}
+
+const milestoneMediaMimeTypes = ["image/jpeg", "image/png", "image/heic", "image/webp"] as const;
+
+function assertPrepareMilestoneMediaPayload(
+  value: unknown,
+): asserts value is PrepareMilestoneMediaPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.milestone_id, "payload.milestone_id");
+  if (value.media_id !== undefined) assertNonEmptyString(value.media_id, "payload.media_id");
+  assertNonEmptyString(value.mime_type, "payload.mime_type");
+  if (
+    typeof value.mime_type === "string"
+    && !milestoneMediaMimeTypes.includes(value.mime_type as typeof milestoneMediaMimeTypes[number])
+  ) {
+    throw new Error("payload.mime_type must be an allowed image type.");
+  }
+  if (typeof value.byte_size !== "number" || !Number.isInteger(value.byte_size)) {
+    throw new Error("payload.byte_size must be an integer.");
+  }
+  if (value.byte_size <= 0 || value.byte_size > 10_485_760) {
+    throw new Error("payload.byte_size must be between 1 and 10485760.");
+  }
+  if (value.capture_time !== undefined) {
+    assertNonEmptyString(value.capture_time, "payload.capture_time");
+  }
+}
+
+function assertCompleteMilestoneMediaPayload(
+  value: unknown,
+): asserts value is CompleteMilestoneMediaPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.media_id, "payload.media_id");
+  if (value.byte_size !== undefined) {
+    if (typeof value.byte_size !== "number" || !Number.isInteger(value.byte_size)) {
+      throw new Error("payload.byte_size must be an integer.");
+    }
+    if (value.byte_size <= 0 || value.byte_size > 10_485_760) {
+      throw new Error("payload.byte_size must be between 1 and 10485760.");
+    }
+  }
+}
+
+function assertFailMilestoneMediaPayload(
+  value: unknown,
+): asserts value is FailMilestoneMediaPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.media_id, "payload.media_id");
+}
+
+function assertRemoveMilestoneMediaPayload(
+  value: unknown,
+): asserts value is RemoveMilestoneMediaPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.media_id, "payload.media_id");
+}
+
+// ---------------------------------------------------------------------------
+// Events / appointments (F11, DM §11.5).
+// ---------------------------------------------------------------------------
+
+const eventKinds = ["vet_appointment", "class", "grooming_visit", "other"] as const;
+
+function assertClockTime(value: unknown, field: string): void {
+  if (typeof value !== "string" || !/^\d{2}:\d{2}(:\d{2})?$/.test(value)) {
+    throw new Error(`${field} must be HH:MM.`);
+  }
+}
+
+function assertCreateEventPayload(value: unknown): asserts value is CreateEventPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.household_id, "payload.household_id");
+  if (value.event_id !== undefined) assertNonEmptyString(value.event_id, "payload.event_id");
+  if (value.pet_id !== undefined && value.pet_id !== null) {
+    assertNonEmptyString(value.pet_id, "payload.pet_id");
+  }
+  if (!eventKinds.includes(value.kind as typeof eventKinds[number])) {
+    throw new Error("payload.kind must be vet_appointment, class, grooming_visit, or other.");
+  }
+  assertNonEmptyString(value.title, "payload.title");
+  assertLocalDate(value.start_date, "payload.start_date");
+  const allDay = value.all_day === undefined ? true : value.all_day === true;
+  if (value.all_day !== undefined && typeof value.all_day !== "boolean") {
+    throw new Error("payload.all_day must be a boolean.");
+  }
+  if (!allDay) {
+    assertClockTime(value.start_time, "payload.start_time");
+    if (value.end_time !== undefined) assertClockTime(value.end_time, "payload.end_time");
+  }
+  if (value.location_text !== undefined && typeof value.location_text !== "string") {
+    throw new Error("payload.location_text must be a string.");
+  }
+  if (value.provider_id !== undefined && value.provider_id !== null) {
+    assertNonEmptyString(value.provider_id, "payload.provider_id");
+  }
+  if (value.notes !== undefined && typeof value.notes !== "string") {
+    throw new Error("payload.notes must be a string.");
+  }
+  if (value.reminder_config !== undefined && value.reminder_config !== null && !isRecord(value.reminder_config)) {
+    throw new Error("payload.reminder_config must be an object or null.");
+  }
+}
+
+function assertEditEventPayload(value: unknown): asserts value is EditEventPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.event_id, "payload.event_id");
+  assertExpectedRevision(value.expected_revision);
+  if (value.pet_id !== undefined && value.pet_id !== null) {
+    assertNonEmptyString(value.pet_id, "payload.pet_id");
+  }
+  if (value.kind !== undefined && !eventKinds.includes(value.kind as typeof eventKinds[number])) {
+    throw new Error("payload.kind must be vet_appointment, class, grooming_visit, or other.");
+  }
+  if (value.title !== undefined) assertNonEmptyString(value.title, "payload.title");
+  if (value.start_date !== undefined) assertLocalDate(value.start_date, "payload.start_date");
+  if (value.all_day !== undefined && typeof value.all_day !== "boolean") {
+    throw new Error("payload.all_day must be a boolean.");
+  }
+  if (value.start_time !== undefined && value.start_time !== null) {
+    assertClockTime(value.start_time, "payload.start_time");
+  }
+  if (value.end_time !== undefined && value.end_time !== null) {
+    assertClockTime(value.end_time, "payload.end_time");
+  }
+  if (value.location_text !== undefined && value.location_text !== null && typeof value.location_text !== "string") {
+    throw new Error("payload.location_text must be a string or null.");
+  }
+  if (value.provider_id !== undefined && value.provider_id !== null) {
+    assertNonEmptyString(value.provider_id, "payload.provider_id");
+  }
+  if (value.notes !== undefined && value.notes !== null && typeof value.notes !== "string") {
+    throw new Error("payload.notes must be a string or null.");
+  }
+  if (value.reminder_config !== undefined && value.reminder_config !== null && !isRecord(value.reminder_config)) {
+    throw new Error("payload.reminder_config must be an object or null.");
+  }
+}
+
+function assertCancelEventPayload(value: unknown): asserts value is CancelEventPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.event_id, "payload.event_id");
+  assertExpectedRevision(value.expected_revision);
+}
+
+function assertArchiveEventPayload(value: unknown): asserts value is ArchiveEventPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.event_id, "payload.event_id");
+  assertExpectedRevision(value.expected_revision);
+}
+
+const pushEnvironments = ["sandbox", "production"] as const;
+
+function assertRegisterDeviceTokenPayload(value: unknown): asserts value is RegisterDeviceTokenPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.token, "payload.token");
+  if (!/^[0-9a-fA-F]{32,200}$/.test(value.token)) {
+    throw new Error("payload.token must be a hex APNs device token.");
+  }
+  if (!pushEnvironments.includes(value.environment as typeof pushEnvironments[number])) {
+    throw new Error("payload.environment must be sandbox or production.");
+  }
+  if (value.platform !== undefined && value.platform !== "ios") {
+    throw new Error("payload.platform must be ios.");
+  }
+  if (value.app_build !== undefined && typeof value.app_build !== "string") {
+    throw new Error("payload.app_build must be a string.");
+  }
+  if (value.device_name !== undefined && typeof value.device_name !== "string") {
+    throw new Error("payload.device_name must be a string.");
+  }
+  if (value.token_id !== undefined) assertNonEmptyString(value.token_id, "payload.token_id");
+}
+
+function assertUnregisterDeviceTokenPayload(value: unknown): asserts value is UnregisterDeviceTokenPayload {
+  if (!isRecord(value)) throw new Error("payload must be an object.");
+  assertNonEmptyString(value.token, "payload.token");
 }
 
 // ---------------------------------------------------------------------------

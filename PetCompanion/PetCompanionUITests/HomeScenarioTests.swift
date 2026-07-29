@@ -60,7 +60,14 @@ final class HomeScenarioTests: ReviewScenarioCase {
 
         // The sheet is a decision surface — show a non-default selection too,
         // since that is where the "Essentials only" copy actually renders.
-        if driver.tap(app.buttons["Essentials only"], describedAs: "Essentials only") {
+        //
+        // Matched by prefix: PCRadioRow combines its children, so the row's
+        // accessibility label is "Essentials only, Just the must-dos" and an
+        // exact match on the title alone finds nothing.
+        if driver.tap(
+            button(startingWith: "Essentials only"),
+            describedAs: "Essentials only"
+        ) {
             driver.capture("capacity-sheet-essentials-selected")
         }
         driver.dismissSheet()

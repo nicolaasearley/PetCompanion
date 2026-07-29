@@ -104,22 +104,26 @@ struct EmailConfirmationView: View {
     let onSignIn: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PCSpacing.xxl) {
-            Image(systemName: "envelope.badge")
-                .font(.system(size: 38, weight: .light))
-                .foregroundStyle(Color.pc.primary)
-                .accessibilityHidden(true)
-            Text("Check your email")
-                .font(Font.pc.title)
-                .foregroundStyle(Color.pc.ink)
-                .accessibilityAddTraits(.isHeader)
-            Text("We sent a confirmation link to \(email). Open it, then return here and sign in.")
-                .font(Font.pc.body)
-                .foregroundStyle(Color.pc.inkSecondary)
-            PrimaryButton(title: "I've confirmed — sign in", action: onSignIn)
-            Spacer()
+        ScrollView {
+            VStack(alignment: .leading, spacing: PCSpacing.xxl) {
+                Image(systemName: "envelope.badge")
+                    .font(.system(size: 38, weight: .light))
+                    .foregroundStyle(Color.pc.primary)
+                    .accessibilityHidden(true)
+                Text("Check your email")
+                    .font(Font.pc.title)
+                    .foregroundStyle(Color.pc.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                Text("We sent a confirmation link to \(email). Open it, then return here and sign in.")
+                    .font(Font.pc.body)
+                    .foregroundStyle(Color.pc.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                PrimaryButton(title: "I've confirmed — sign in", action: onSignIn)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(PCSpacing.screenMargin)
         }
-        .padding(PCSpacing.screenMargin)
         .background(Color.pc.bg.ignoresSafeArea())
         .navigationBarBackButtonHidden()
     }

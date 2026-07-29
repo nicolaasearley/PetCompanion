@@ -436,31 +436,32 @@ private struct PlannerSnoozeSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: PCSpacing.betweenSections) {
-                Text("Snooze changes reminder emphasis only. The task stays due today and remains visible to the household.")
-                    .font(Font.pc.body)
-                    .foregroundStyle(Color.pc.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            ScrollView {
+                VStack(alignment: .leading, spacing: PCSpacing.betweenSections) {
+                    Text("Snooze changes reminder emphasis only. The task stays due today and remains visible to the household.")
+                        .font(Font.pc.body)
+                        .foregroundStyle(Color.pc.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                PCLabeledField(label: "Remind me at") {
-                    DatePicker(
-                        "Snooze until",
-                        selection: $selectedDate,
-                        displayedComponents: .hourAndMinute
-                    )
-                    .labelsHidden()
-                }
+                    PCLabeledField(label: "Remind me at") {
+                        DatePicker(
+                            "Snooze until",
+                            selection: $selectedDate,
+                            displayedComponents: .hourAndMinute
+                        )
+                        .labelsHidden()
+                    }
 
-                if let errorMessage {
-                    PCInlineError(message: errorMessage)
-                }
+                    if let errorMessage {
+                        PCInlineError(message: errorMessage)
+                    }
 
-                PrimaryButton(title: "Snooze", isLoading: isSaving) {
-                    save()
+                    PrimaryButton(title: "Snooze", isLoading: isSaving) {
+                        save()
+                    }
                 }
-                Spacer(minLength: 0)
+                .padding(PCSpacing.screenMargin)
             }
-            .padding(PCSpacing.screenMargin)
             .background(Color.pc.bg)
             .navigationTitle("Snooze")
             .navigationBarTitleDisplayMode(.inline)
@@ -472,7 +473,7 @@ private struct PlannerSnoozeSheet: View {
             }
             .interactiveDismissDisabled(isSaving)
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .environment(\.calendar, calendar)
         .environment(\.timeZone, calendar.timeZone)
     }

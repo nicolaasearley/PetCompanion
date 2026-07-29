@@ -126,9 +126,11 @@ struct SocializationPassportView: View {
     @ViewBuilder
     private var statusBanner: some View {
         if let message = store.errorMessage {
-            SocializationBanner(message: message, isError: true) { store.errorMessage = nil }
+            SocializationBanner(message: message, tone: .error) { store.errorMessage = nil }
+        } else if let message = store.queuedMessage {
+            SocializationBanner(message: message, tone: .queued) { store.queuedMessage = nil }
         } else if let message = store.confirmationMessage {
-            SocializationBanner(message: message, isError: false) { store.confirmationMessage = nil }
+            SocializationBanner(message: message, tone: .success) { store.confirmationMessage = nil }
         }
     }
 }
@@ -211,24 +213,61 @@ private struct SocializationCategoryCard: View {
 
 struct SocializationRecordRow: View {
     let record: SocializationRecord
+    /// Present only where removal is reachable today (TR-07's Recorded
+    /// history) — the Home passport's Recent list stays read-only.
+    /// Supplying this opts the row into a visible, discoverable overflow
+    /// menu with its own destructive confirmation, replacing the
+    /// long-press-only context menu doc 22 §7 flagged: no discoverable
+    /// affordance, no confirmation, while the *reversible* pause action
+    /// beside it got a full dialog.
+    var onRemove: (() -> Void)?
+
+    @State private var isConfirmingRemoval = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PCSpacing.xs) {
-            Text(record.label)
-                .font(Font.pc.body.weight(.semibold))
-                .foregroundStyle(Color.pc.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(subtitle)
-                .font(Font.pc.secondary)
-                .foregroundStyle(Color.pc.inkSecondary)
-            if let context = record.context, !context.isEmpty {
-                Text(context)
-                    .font(Font.pc.caption)
-                    .foregroundStyle(Color.pc.inkTertiary)
+        HStack(alignment: .top, spacing: PCSpacing.md) {
+            VStack(alignment: .leading, spacing: PCSpacing.xs) {
+                Text(record.label)
+                    .font(Font.pc.body.weight(.semibold))
+                    .foregroundStyle(Color.pc.ink)
                     .fixedSize(horizontal: false, vertical: true)
+                Text(subtitle)
+                    .font(Font.pc.secondary)
+                    .foregroundStyle(Color.pc.inkSecondary)
+                if let context = record.context, !context.isEmpty {
+                    Text(context)
+                        .font(Font.pc.caption)
+                        .foregroundStyle(Color.pc.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(record.label). \(subtitle)")
+
+            if let onRemove {
+                Menu {
+                    Button("Remove from the passport", role: .destructive) {
+                        isConfirmingRemoval = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(Color.pc.primary)
+                        .frame(width: PCMetrics.minTouchTarget, height: PCMetrics.minTouchTarget)
+                }
+                .accessibilityLabel("Options for \(record.label)")
+                .confirmationDialog(
+                    "Remove this from the passport?",
+                    isPresented: $isConfirmingRemoval,
+                    titleVisibility: .visible
+                ) {
+                    Button("Remove", role: .destructive, action: onRemove)
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("\(record.label), \(subtitle), will be removed for good. This can't be undone here.")
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(PCSpacing.cardPadding)
         .background(
             RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
@@ -238,8 +277,6 @@ struct SocializationRecordRow: View {
             RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
                 .strokeBorder(Color.pc.border, lineWidth: 1)
         )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(record.label). \(subtitle)")
     }
 
     /// "Curious · Tue" — the response is stated as the owner's own report and
@@ -252,14 +289,43 @@ struct SocializationRecordRow: View {
 }
 
 struct SocializationBanner: View {
+    /// `.queued` is deliberately its own tone rather than a flavor of
+    /// `.success`: a durable offline-queue acceptance
+    /// (`OfflineMutationError.queued`) is real and non-losable, but it is
+    /// not a server confirmation, and doc 22 §7's defect was exactly this
+    /// distinction getting blurred. It borrows `PlanItemCard`'s existing
+    /// queued visual language (`arrow.triangle.2.circlepath`, `Color.pc.info`
+    /// — "upcoming/informational, slate") rather than inventing a new one.
+    enum Tone {
+        case success
+        case queued
+        case error
+    }
+
     let message: String
-    let isError: Bool
+    var tone: Tone
     let dismiss: () -> Void
+
+    private var icon: String {
+        switch tone {
+        case .success: "checkmark.circle.fill"
+        case .queued: "arrow.triangle.2.circlepath"
+        case .error: "exclamationmark.circle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch tone {
+        case .success: Color.pc.success
+        case .queued: Color.pc.info
+        case .error: Color.pc.danger
+        }
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: PCSpacing.sm) {
-            Image(systemName: isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(isError ? Color.pc.danger : Color.pc.success)
+            Image(systemName: icon)
+                .foregroundStyle(tint)
                 .accessibilityHidden(true)
             Text(message)
                 .font(Font.pc.secondary)
@@ -273,11 +339,11 @@ struct SocializationBanner: View {
         .padding(PCSpacing.cardPadding)
         .background(
             RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
-                .fill(Color.pc.surface)
+                .fill(tone == .error ? Color.pc.dangerBg : Color.pc.surface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
-                .strokeBorder(Color.pc.border, lineWidth: 1)
+                .strokeBorder(tone == .error ? Color.pc.danger.opacity(0.35) : Color.pc.border, lineWidth: 1)
         )
         .padding(.horizontal, PCSpacing.screenMargin)
         .padding(.bottom, PCSpacing.lg)

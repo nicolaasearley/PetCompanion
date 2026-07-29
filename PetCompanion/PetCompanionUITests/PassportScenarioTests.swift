@@ -2,8 +2,9 @@ import XCTest
 
 /// TR-06 socialization passport → TR-07 one category → the record sheet.
 ///
-/// The passport is docked at the bottom of the Training tab, not a tab of its
-/// own.
+/// The passport is a hero tile leading the Training tab's own content
+/// (2026-07-29 hierarchy update), not a tab of its own — previously it was a
+/// docked row under Training's content instead.
 final class PassportScenarioTests: ReviewScenarioCase {
     override class var scenarioName: String { "passport" }
 

@@ -1,17 +1,23 @@
 import SwiftUI
 
-/// TR-01 — Training overview. Active goals with their owner-reported state
-/// and recency, stage-appropriate starters, the catalogue entry point, and
-/// recent sessions with attribution.
+/// TR-01 — Training overview. The socialization passport hero leads the
+/// screen (owner-directed hierarchy update, 2026-07-29), followed by active
+/// goals with their owner-reported state and recency, stage-appropriate
+/// starters, the catalogue entry point, and recent sessions with
+/// attribution.
 ///
-/// Everything here comes from `TrainingService`; there is no on-device
-/// catalogue any more, so what a caregiver reads is the reviewed content the
-/// backend actually holds (F08 "Identify content source, version, and review
-/// status").
+/// Everything skill-related here comes from `TrainingService`; there is no
+/// on-device catalogue any more, so what a caregiver reads is the reviewed
+/// content the backend actually holds (F08 "Identify content source,
+/// version, and review status"). Socialization is a separate domain
+/// (`SocializationService`/`SocializationStore`) reached only through the
+/// hero — `TrainingView` never loads it, so opening the sheet is the first
+/// and only socialization network activity this screen causes.
 struct TrainingView: View {
     @Environment(AppModel.self) private var model
     @State private var viewModel: TrainingViewModel?
     @State private var loggingGoal: TrainingGoal?
+    @State private var isShowingPassport = false
 
     private var pet: Pet? { model.activePet }
     private var calendar: Calendar { model.household?.clock.calendar ?? .current }
@@ -47,6 +53,14 @@ struct TrainingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: PCSpacing.betweenSections) {
                 header
+
+                // Matches the docked entry's old guard: without an active
+                // pet, `model.makeSocializationStore()` has nothing to
+                // build (doc: "About one puppy's real experiences"), so the
+                // tile would open onto an empty sheet.
+                if pet != nil {
+                    SocializationPassportHero(action: { isShowingPassport = true })
+                }
 
                 if let message = viewModel.errorMessage {
                     InlineNoticeCard(text: message)
@@ -118,6 +132,18 @@ struct TrainingView: View {
                 viewModel: viewModel,
                 calendar: calendar
             )
+        }
+        .sheet(isPresented: $isShowingPassport) {
+            if let store = model.makeSocializationStore() {
+                NavigationStack {
+                    SocializationPassportView(store: store)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") { isShowingPassport = false }
+                            }
+                        }
+                }
+            }
         }
     }
 
@@ -227,6 +253,12 @@ private struct ActiveGoalCard: View {
                     PCChip(text: "Paused", style: .neutral)
                 }
             }
+
+            // Owner-reported state position — never a computed % (docs/22 §5.2).
+            TrainingProgressStateBar(
+                model: TrainingProgressAffordanceModel(goal: goal),
+                style: .compact
+            )
 
             if let onLog {
                 SecondaryButton(title: "Log session", isDisabled: isBusy, action: onLog)

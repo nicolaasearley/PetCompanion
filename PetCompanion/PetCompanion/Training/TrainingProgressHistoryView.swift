@@ -49,13 +49,13 @@ struct TrainingProgressHistoryView: View {
     private func currentState(_ goal: TrainingGoal) -> some View {
         VStack(alignment: .leading, spacing: PCSpacing.sm) {
             SectionHeader(title: "Where you are")
-            Text(goal.progressState.displayName)
-                .font(Font.pc.title)
-                .foregroundStyle(Color.pc.ink)
-            Text(goal.progressState.explanation)
-                .font(Font.pc.body)
-                .foregroundStyle(Color.pc.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+
+            // Discrete owner-reported continuum — rejects Module Completion %
+            // (docs/22 §5.2 / PRODUCT.md unexplained-scores ban).
+            TrainingProgressStateBar(
+                model: TrainingProgressAffordanceModel(goal: goal),
+                style: .expanded
+            )
 
             if let updatedAt = goal.progressStateUpdatedAt {
                 Text(

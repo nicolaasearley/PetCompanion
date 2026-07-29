@@ -50,8 +50,12 @@ struct RecordSocializationView: View {
                     responseSection
                     notesSection
 
-                    if let validationMessage {
-                        PCInlineError(message: validationMessage)
+                    // Local validation and a save failure share one slot: both
+                    // mean "fix this before it can save," and doc 22 §7's
+                    // defect was exactly this message rendering on the
+                    // screen *behind* this sheet instead of here.
+                    if let message = validationMessage ?? store.errorMessage {
+                        PCInlineError(message: message)
                     }
 
                     PrimaryButton(title: "Save to the passport", action: save)
@@ -70,10 +74,17 @@ struct RecordSocializationView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        store.errorMessage = nil
+                        dismiss()
+                    }
                 }
             }
         }
+        // A stale failure from an unrelated earlier action (removing a
+        // record, pausing a category) must not appear to belong to a sheet
+        // that just opened.
+        .onAppear { store.errorMessage = nil }
     }
 
     @ViewBuilder

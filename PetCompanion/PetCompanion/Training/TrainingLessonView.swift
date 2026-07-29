@@ -158,6 +158,11 @@ struct TrainingLessonView: View {
                     .font(Font.pc.secondary)
                     .foregroundStyle(Color.pc.inkSecondary)
 
+                TrainingProgressStateBar(
+                    model: TrainingProgressAffordanceModel(goal: goal),
+                    style: .expanded
+                )
+
                 switch goal.status {
                 case .active:
                     PrimaryButton(title: "Log session", isLoading: false, isDisabled: isBusy) {

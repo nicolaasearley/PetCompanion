@@ -231,4 +231,66 @@ final class TrainingTests: XCTestCase {
             XCTAssertFalse(state.explanation.isEmpty)
         }
     }
+
+    // MARK: - Honest progress affordance (docs/22 §5.2)
+
+    func testProgressAffordanceMapsOwnerReportedStatesToDiscreteSteps() {
+        XCTAssertEqual(TrainingProgressState.notStarted.continuumStep, 1)
+        XCTAssertEqual(TrainingProgressState.introduced.continuumStep, 2)
+        XCTAssertEqual(TrainingProgressState.practicing.continuumStep, 3)
+        XCTAssertEqual(TrainingProgressState.reliableInFamiliarSetting.continuumStep, 4)
+        XCTAssertEqual(TrainingProgressState.generalizing.continuumStep, 5)
+        XCTAssertEqual(TrainingProgressState.maintained.continuumStep, 6)
+        XCTAssertEqual(TrainingProgressState.continuumStepCount, 6)
+
+        // Every continuum state is a named step — never a blank or "%".
+        for state in TrainingProgressState.allCases {
+            let model = TrainingProgressAffordanceModel(state: state)
+            XCTAssertEqual(model.title, state.displayName)
+            XCTAssertEqual(model.stepNumber, state.continuumStep)
+            XCTAssertFalse(model.title.contains("%"))
+            XCTAssertFalse(model.caption.contains("%"))
+            XCTAssertFalse(model.accessibilityLabel.contains("%"))
+            XCTAssertTrue(model.accessibilityLabel.contains(state.displayName))
+            XCTAssertTrue(model.rejectsComputedPercentage)
+        }
+    }
+
+    func testProgressAffordanceNamesPausedWithoutMovingContinuumStep() {
+        let practicing = TrainingProgressAffordanceModel(state: .practicing, isPaused: false)
+        let paused = TrainingProgressAffordanceModel(state: .practicing, isPaused: true)
+
+        XCTAssertEqual(practicing.stepNumber, paused.stepNumber)
+        XCTAssertEqual(paused.title, "Paused · Practicing")
+        XCTAssertTrue(paused.accessibilityLabel.contains("Paused"))
+        XCTAssertTrue(paused.accessibilityLabel.contains("Practicing"))
+        XCTAssertFalse(paused.caption.contains("%"))
+        // Pausing is not a further step on the continuum (US-064).
+        XCTAssertEqual(paused.stepNumber, 3)
+    }
+
+    func testProgressAffordanceIgnoresSessionCountAsCompletion() {
+        // Session counts are factual history, never a completion ratio for the bar.
+        let few = TrainingGoal(
+            householdId: UUID(),
+            petId: UUID(),
+            skillRef: "skill.recall_foundations",
+            progressState: .practicing,
+            sessionCount: 2
+        )
+        let many = TrainingGoal(
+            householdId: UUID(),
+            petId: UUID(),
+            skillRef: "skill.recall_foundations",
+            progressState: .practicing,
+            sessionCount: 40
+        )
+        let fewModel = TrainingProgressAffordanceModel(goal: few)
+        let manyModel = TrainingProgressAffordanceModel(goal: many)
+        XCTAssertEqual(fewModel.stepNumber, manyModel.stepNumber)
+        XCTAssertEqual(fewModel.title, manyModel.title)
+        XCTAssertFalse(fewModel.accessibilityLabel.contains("40"))
+        XCTAssertFalse(manyModel.accessibilityLabel.contains("40"))
+        XCTAssertFalse(fewModel.accessibilityLabel.contains("%"))
+    }
 }

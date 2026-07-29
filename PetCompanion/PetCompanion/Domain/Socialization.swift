@@ -233,3 +233,59 @@ enum SocializationCatalogue {
         experiences.first { $0.contentId == contentId }
     }
 }
+
+/// Every way a socialization passport write can fail, in the caregiver's
+/// terms. Mirrors `TrainingError`/`InvitationError`'s server-code mapping so
+/// a raw Postgres validation string (doc 22 §7 — "server validation strings
+/// are shown to users verbatim") never reaches the record/remove/pause
+/// sheets.
+///
+/// Unlike those two, an unrecognized code here does **not** fall back to the
+/// server's own message: `.unexpected` never carries the raw text, only the
+/// code, so `errorDescription` is unconditionally calm no matter what the
+/// server sends. `RealSocializationService` is the diagnostic path — it logs
+/// the code *and* message through `os.Logger` before constructing this type,
+/// so an unanticipated failure is still visible in the device console/
+/// Console.app without ever reaching the UI.
+enum SocializationError: LocalizedError, Equatable {
+    /// `REVISION_CONFLICT` — another caregiver edited or removed the same
+    /// record first (`expected_revision` mismatch, migration §"this record
+    /// changed since you opened it").
+    case changedElsewhere
+    /// `FORBIDDEN` — household membership lapsed or the pet is no longer
+    /// active. Same code, same copy as `TrainingError`/goal actions.
+    case notSignedIn
+    /// `VALIDATION_FAILED` — covers several distinct Postgres checks (an
+    /// effective date too far in the past, a malformed category/response
+    /// pairing, and similar), none of which the client's own UI should be
+    /// able to produce in the ordinary case. One calm, generic message
+    /// covers the bucket rather than parsing SQL text into sub-cases.
+    case invalidEntry
+    /// A code with no specific copy yet — including `IDEMPOTENCY_CONFLICT`
+    /// and any future/unclassified server code. Carries only the code
+    /// (never the server's message) so a raw Postgres/internal string can
+    /// never end up in `errorDescription`.
+    case unexpected(code: String)
+
+    init(code: String, message: String) {
+        switch code {
+        case "REVISION_CONFLICT": self = .changedElsewhere
+        case "FORBIDDEN": self = .notSignedIn
+        case "VALIDATION_FAILED": self = .invalidEntry
+        default: self = .unexpected(code: code)
+        }
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .changedElsewhere:
+            "This record changed since you opened it. Reopen it to see the latest."
+        case .notSignedIn:
+            "Sign in to continue."
+        case .invalidEntry:
+            "That entry doesn't look right — check the date and details, and try again."
+        case .unexpected:
+            "Something went wrong. Try again."
+        }
+    }
+}

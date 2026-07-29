@@ -95,9 +95,11 @@ struct SocializationCategoryView: View {
         }
         .overlay(alignment: .bottom) {
             if let message = store.errorMessage {
-                SocializationBanner(message: message, isError: true) { store.errorMessage = nil }
+                SocializationBanner(message: message, tone: .error) { store.errorMessage = nil }
+            } else if let message = store.queuedMessage {
+                SocializationBanner(message: message, tone: .queued) { store.queuedMessage = nil }
             } else if let message = store.confirmationMessage {
-                SocializationBanner(message: message, isError: false) { store.confirmationMessage = nil }
+                SocializationBanner(message: message, tone: .success) { store.confirmationMessage = nil }
             }
         }
     }
@@ -169,12 +171,9 @@ struct SocializationCategoryView: View {
             } else {
                 VStack(spacing: PCSpacing.betweenCards) {
                     ForEach(recorded) { record in
-                        SocializationRecordRow(record: record)
-                            .contextMenu {
-                                Button("Remove from the passport", role: .destructive) {
-                                    Task { await store.remove(record: record) }
-                                }
-                            }
+                        SocializationRecordRow(record: record) {
+                            Task { await store.remove(record: record) }
+                        }
                     }
                 }
             }

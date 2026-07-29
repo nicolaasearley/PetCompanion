@@ -77,6 +77,22 @@ final class TrainingScenarioTests: ReviewScenarioCase {
             [app.buttons["Log session"]],
             describedAs: "lesson with an active goal"
         ) else { return }
+
+        // Honest progress affordance: owner-reported state bar, never a %.
+        let progressBar = app.descendants(matching: .any)["training-progress-state-bar"]
+        if progressBar.waitForExistence(timeout: 3) {
+            let label = progressBar.label
+            if label.localizedCaseInsensitiveContains("%") {
+                driver.note("FAIL: training progress bar accessibility label contains a percentage: \(label)")
+            } else if !label.localizedCaseInsensitiveContains("Owner-reported") {
+                driver.note("training progress bar missing owner-reported wording: \(label)")
+            } else {
+                driver.note("training progress bar shows owner-reported state (no %)")
+            }
+        } else {
+            driver.note("training progress state bar not found after starting goal")
+        }
+
         driver.capture("training-lesson-goal-started")
     }
 

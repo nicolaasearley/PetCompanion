@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Supabase
 
 /// Supabase-backed socialization passport (F09).
@@ -12,6 +13,12 @@ final class RealSocializationService: SocializationService {
     private let client: SupabaseClient
     private let decoder = SupabaseCoding.restDecoder
     private let operationQueue: OfflineOperationQueue?
+    /// The one diagnostic path for a server code/message this client has no
+    /// specific copy for (`SocializationError.unexpected`) — same
+    /// unified-logging convention as `RealPlanService`'s `logger`. Console/
+    /// Xcode-visible only; the caregiver-facing error never carries this
+    /// text (doc 22 §7).
+    private let logger = Logger(subsystem: "com.nic.petcompanion", category: "socialization")
 
     init(client: SupabaseClient, operationQueue: OfflineOperationQueue? = nil) {
         self.client = client
@@ -115,23 +122,27 @@ final class RealSocializationService: SocializationService {
 
         let trimmedCustom = draft.customLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
         let isCatalogue = draft.experience != nil
-        let _: Acknowledgement = try await WritePath.sendStable(
-            client: client,
-            command: "record_socialization",
-            payload: Payload(
-                pet_id: petId.uuidString,
-                experience_content_id: draft.experience?.contentId,
-                custom_label: isCatalogue ? nil : trimmedCustom,
-                // A catalogue experience takes its category from the catalogue
-                // server-side; sending one would be ignored anyway.
-                category: isCatalogue ? nil : draft.category.rawValue,
-                effective_date: SocializationCoding.localDate(draft.effectiveDate),
-                context: draft.context.isEmpty ? nil : draft.context,
-                response: draft.response.rawValue,
-                note: draft.note.isEmpty ? nil : draft.note
-            ),
-            queue: operationQueue
-        )
+        do {
+            let _: Acknowledgement = try await WritePath.sendStable(
+                client: client,
+                command: "record_socialization",
+                payload: Payload(
+                    pet_id: petId.uuidString,
+                    experience_content_id: draft.experience?.contentId,
+                    custom_label: isCatalogue ? nil : trimmedCustom,
+                    // A catalogue experience takes its category from the catalogue
+                    // server-side; sending one would be ignored anyway.
+                    category: isCatalogue ? nil : draft.category.rawValue,
+                    effective_date: SocializationCoding.localDate(draft.effectiveDate),
+                    context: draft.context.isEmpty ? nil : draft.context,
+                    response: draft.response.rawValue,
+                    note: draft.note.isEmpty ? nil : draft.note
+                ),
+                queue: operationQueue
+            )
+        } catch let error as WritePathError {
+            throw socializationError(from: error)
+        }
     }
 
     func editResponse(
@@ -146,27 +157,35 @@ final class RealSocializationService: SocializationService {
             let response: String
             let note: String?
         }
-        let _: Acknowledgement = try await WritePath.sendStable(
-            client: client,
-            command: "edit_socialization_record",
-            payload: Payload(
-                record_id: recordId.uuidString,
-                expected_revision: expectedRevision,
-                response: response.rawValue,
-                note: note
-            ),
-            queue: operationQueue
-        )
+        do {
+            let _: Acknowledgement = try await WritePath.sendStable(
+                client: client,
+                command: "edit_socialization_record",
+                payload: Payload(
+                    record_id: recordId.uuidString,
+                    expected_revision: expectedRevision,
+                    response: response.rawValue,
+                    note: note
+                ),
+                queue: operationQueue
+            )
+        } catch let error as WritePathError {
+            throw socializationError(from: error)
+        }
     }
 
     func remove(recordId: UUID) async throws {
         struct Payload: Encodable { let record_id: String }
-        let _: Acknowledgement = try await WritePath.sendStable(
-            client: client,
-            command: "remove_socialization_record",
-            payload: Payload(record_id: recordId.uuidString),
-            queue: operationQueue
-        )
+        do {
+            let _: Acknowledgement = try await WritePath.sendStable(
+                client: client,
+                command: "remove_socialization_record",
+                payload: Payload(record_id: recordId.uuidString),
+                queue: operationQueue
+            )
+        } catch let error as WritePathError {
+            throw socializationError(from: error)
+        }
     }
 
     func setExclusion(
@@ -181,27 +200,52 @@ final class RealSocializationService: SocializationService {
             let experience_content_id: String?
             let reason: String
         }
-        let _: Acknowledgement = try await WritePath.sendStable(
-            client: client,
-            command: "set_socialization_exclusion",
-            payload: Payload(
-                pet_id: petId.uuidString,
-                category: category?.rawValue,
-                experience_content_id: experienceContentId,
-                reason: reason.rawValue
-            ),
-            queue: operationQueue
-        )
+        do {
+            let _: Acknowledgement = try await WritePath.sendStable(
+                client: client,
+                command: "set_socialization_exclusion",
+                payload: Payload(
+                    pet_id: petId.uuidString,
+                    category: category?.rawValue,
+                    experience_content_id: experienceContentId,
+                    reason: reason.rawValue
+                ),
+                queue: operationQueue
+            )
+        } catch let error as WritePathError {
+            throw socializationError(from: error)
+        }
     }
 
     func clearExclusion(exclusionId: UUID) async throws {
         struct Payload: Encodable { let exclusion_id: String }
-        let _: Acknowledgement = try await WritePath.sendStable(
-            client: client,
-            command: "clear_socialization_exclusion",
-            payload: Payload(exclusion_id: exclusionId.uuidString),
-            queue: operationQueue
-        )
+        do {
+            let _: Acknowledgement = try await WritePath.sendStable(
+                client: client,
+                command: "clear_socialization_exclusion",
+                payload: Payload(exclusion_id: exclusionId.uuidString),
+                queue: operationQueue
+            )
+        } catch let error as WritePathError {
+            throw socializationError(from: error)
+        }
+    }
+
+    private func socializationError(from error: WritePathError) -> Error {
+        switch error {
+        case .server(let code, let message):
+            let mapped = SocializationError(code: code, message: message)
+            if case .unexpected = mapped {
+                // Only reached for a code this client has no specific copy
+                // for — the raw text stops here rather than reaching
+                // `errorMessage`.
+                logger.error("Unmapped socialization write failure: code=\(code, privacy: .public) message=\(message, privacy: .public)")
+            }
+            return mapped
+        case .malformedResponse:
+            logger.error("Malformed socialization write response")
+            return SocializationError.unexpected(code: "MALFORMED_RESPONSE")
+        }
     }
 }
 

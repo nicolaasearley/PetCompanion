@@ -97,8 +97,11 @@ private struct CatalogueSkillRow: View {
 
                 HStack(spacing: PCSpacing.xs) {
                     if let goal {
+                        // Name the owner-reported state — never a completion %.
                         PCChip(
-                            text: goal.status == .paused ? "Paused" : "Active goal",
+                            text: goal.status == .paused
+                                ? "Paused · \(goal.progressState.displayName)"
+                                : goal.progressState.displayName,
                             style: goal.status == .paused ? .neutral : .success
                         )
                     }

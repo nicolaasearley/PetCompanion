@@ -44,6 +44,16 @@ enum TrainingProgressState: String, Codable, CaseIterable, Sendable {
         case .maintained: "Keeping it fresh with the occasional session."
         }
     }
+
+    /// 1-based position on the owner-reported continuum (F08's six learning
+    /// states). F08's seventh label, "Paused", is a goal lifecycle status —
+    /// not a step here — so pausing never moves this index (US-064).
+    var continuumStep: Int {
+        (Self.allCases.firstIndex(of: self) ?? 0) + 1
+    }
+
+    /// Count of discrete continuum steps — never derived from session counts.
+    static var continuumStepCount: Int { allCases.count }
 }
 
 /// Goal lifecycle — DM §12.2. `retired` is a closed pursuit: it frees the

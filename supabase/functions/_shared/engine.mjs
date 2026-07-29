@@ -160,10 +160,10 @@ function historyFor(context, predicate) {
 function latestHistoryDate(context, predicate) {
   return historyFor(context, predicate)[0]?.local_date ?? null;
 }
-function onCooldown(context, rule, contentId) {
+function onCooldown(context, rule, contentId, scope = "rule") {
   const latest = latestHistoryDate(
     context,
-    (entry) => (entry.content_id === contentId || entry.rule_content_id === rule.content_id) && entry.outcome !== "expired"
+    (entry) => (entry.content_id === contentId || scope === "rule" && entry.rule_content_id === rule.content_id) && entry.outcome !== "expired"
   );
   return latest !== null && daysBetween(latest, context.local_date) < rule.cooldown_days;
 }
@@ -230,7 +230,7 @@ function ruleMap(catalogue) {
     catalogue.recommendation_rules.filter((rule) => SUPPORTED_RULES.includes(rule.content_id)).map((rule) => [rule.content_id, rule])
   );
 }
-function addCandidate(candidates, suppressed, context, rule, content, title, category, effort, values, weights, scorePatch = {}) {
+function addCandidate(candidates, suppressed, context, rule, content, title, category, effort, values, weights, scorePatch = {}, cooldownScope = "rule") {
   const candidateKey = `${rule.content_id}:${content.content_id}`;
   if (context.household.excluded_content_ids?.includes(content.content_id)) {
     suppressed.push({ candidate_key: candidateKey, reason: "content_excluded" });
@@ -240,7 +240,7 @@ function addCandidate(candidates, suppressed, context, rule, content, title, cat
     suppressed.push({ candidate_key: candidateKey, reason: "content_paused" });
     return;
   }
-  if (onCooldown(context, rule, content.content_id)) {
+  if (onCooldown(context, rule, content.content_id, cooldownScope)) {
     suppressed.push({ candidate_key: candidateKey, reason: "cooldown" });
     return;
   }
@@ -371,7 +371,11 @@ function socializationCandidates(context, catalogue, stage, rule, candidates, su
       "socialization",
       rule.effort_band,
       { Puppy: context.pet.name, name: context.pet.name, category: row.category.toLowerCase() },
-      weights
+      weights,
+      {},
+      // Catalogue §9: the socialization cooldown is per category, and the
+      // category filter above has already applied it.
+      "content"
     );
   }
 }

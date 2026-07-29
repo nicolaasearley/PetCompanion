@@ -228,7 +228,8 @@ final class PlanDayScopeTests: XCTestCase {
         let model = AppModel(
             auth: seedModel.auth,
             households: seedModel.households,
-            plans: plans
+            plans: plans,
+            training: MockTrainingService(backend: MockBackend())
         )
         model.currentUser = seedModel.currentUser
         model.household = household

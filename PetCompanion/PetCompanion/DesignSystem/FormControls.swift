@@ -95,6 +95,7 @@ struct PCRadioRow: View {
                 Spacer(minLength: 0)
             }
             .padding(.vertical, PCSpacing.sm + 2)
+            .frame(minHeight: PCMetrics.minTouchTarget)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

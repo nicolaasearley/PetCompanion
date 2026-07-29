@@ -18,11 +18,19 @@
 			remoteGlobalIDString = 000000000000000100000000;
 			remoteInfo = PetCompanion;
 		};
+		000000000000000000000153 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000100000000;
+			remoteInfo = PetCompanion;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* PetCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PetCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000121 /* PetCompanionTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PetCompanionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000122 /* PetCompanionUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PetCompanionUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -34,6 +42,11 @@
 		000000000000000000000011 /* PetCompanionTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = PetCompanionTests;
+			sourceTree = "<group>";
+		};
+		000000000000000000000012 /* PetCompanionUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PetCompanionUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -50,6 +63,11 @@
 			files = (
 			);
 		};
+		000000000000000130000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -58,6 +76,7 @@
 			children = (
 				000000000000000000000010 /* PetCompanion */,
 				000000000000000000000011 /* PetCompanionTests */,
+				000000000000000000000012 /* PetCompanionUITests */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -67,6 +86,7 @@
 			children = (
 				000000000000000000000120 /* PetCompanion.app */,
 				000000000000000000000121 /* PetCompanionTests.xctest */,
+				000000000000000000000122 /* PetCompanionUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -116,6 +136,27 @@
 			productReference = 000000000000000000000121 /* PetCompanionTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		000000000000000100000002 /* PetCompanionUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 000000000000000110000002 /* Build configuration list for PBXNativeTarget "PetCompanionUITests" */;
+			buildPhases = (
+				000000000000000120000002 /* Sources */,
+				000000000000000130000002 /* Frameworks */,
+				000000000000000140000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				000000000000000000000152 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				000000000000000000000012 /* PetCompanionUITests */,
+			);
+			name = PetCompanionUITests;
+			productName = PetCompanionUITests;
+			productReference = 000000000000000000000122 /* PetCompanionUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -131,6 +172,10 @@
 					};
 					000000000000000100000001 = {
 						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 000000000000000100000000;
+					};
+					000000000000000100000002 = {
+						CreatedOnToolsVersion = 27.0;
 						TestTargetID = 000000000000000100000000;
 					};
 				};
@@ -154,6 +199,7 @@
 			targets = (
 				000000000000000100000000 /* PetCompanion */,
 				000000000000000100000001 /* PetCompanionTests */,
+				000000000000000100000002 /* PetCompanionUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -165,6 +211,11 @@
 			);
 		};
 		000000000000000140000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		000000000000000140000002 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -182,6 +233,11 @@
 			files = (
 			);
 		};
+		000000000000000120000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -189,6 +245,11 @@
 			isa = PBXTargetDependency;
 			target = 000000000000000100000000 /* PetCompanion */;
 			targetProxy = 000000000000000000000151 /* PBXContainerItemProxy */;
+		};
+		000000000000000000000152 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 000000000000000100000000 /* PetCompanion */;
+			targetProxy = 000000000000000000000153 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -439,6 +500,40 @@
 			};
 			name = Release;
 		};
+		000000000000000115000000 /* Debug configuration for PBXNativeTarget "PetCompanionUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nic.petcompanion.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = PetCompanion;
+			};
+			name = Debug;
+		};
+		000000000000000116000000 /* Release configuration for PBXNativeTarget "PetCompanionUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nic.petcompanion.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = PetCompanion;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -463,6 +558,14 @@
 			buildConfigurations = (
 				000000000000000113000000 /* Debug configuration for PBXNativeTarget "PetCompanionTests" */,
 				000000000000000114000000 /* Release configuration for PBXNativeTarget "PetCompanionTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		000000000000000110000002 /* Build configuration list for PBXNativeTarget "PetCompanionUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000115000000 /* Debug configuration for PBXNativeTarget "PetCompanionUITests" */,
+				000000000000000116000000 /* Release configuration for PBXNativeTarget "PetCompanionUITests" */,
 			);
 			defaultConfigurationName = Release;
 		};

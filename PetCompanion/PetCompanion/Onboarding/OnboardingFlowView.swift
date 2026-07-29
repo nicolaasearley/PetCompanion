@@ -2,10 +2,11 @@ import SwiftUI
 
 /// Linear onboarding stack — doc 14 §4. Back never loses entered data
 /// within the session (each screen owns its own state while pushed).
-/// ON-04/ON-05/ON-09 ship in later slices (doc 17 WP-2).
+/// ON-09 ships in a later slice (doc 17 WP-2).
 enum OnboardingRoute: Hashable {
     case createAccount
     case signIn
+    case requestPasswordReset
     case createHousehold
     case addPet
     case routineBasics
@@ -34,7 +35,15 @@ struct OnboardingFlowView: View {
                         onConfirmationRequired: { path.append(.confirmEmail($0)) }
                     )
                 case .signIn:
-                    AuthFormView(mode: .signIn, onAuthenticated: routeAfterAuth)
+                    AuthFormView(
+                        mode: .signIn,
+                        onAuthenticated: routeAfterAuth,
+                        onForgotPassword: { path.append(.requestPasswordReset) }
+                    )
+                case .requestPasswordReset:
+                    RequestPasswordResetView(
+                        onBackToSignIn: { path = [.signIn] }
+                    )
                 case .createHousehold:
                     CreateHouseholdView(
                         onContinue: { path.append(.addPet) },
@@ -57,6 +66,10 @@ struct OnboardingFlowView: View {
             }
         }
         .task {
+            if model.consumePasswordRecoverySignInRequest() {
+                path = [.signIn]
+                return
+            }
             guard path.isEmpty, let destination = model.consumePendingOnboardingDestination() else {
                 return
             }
@@ -95,6 +108,8 @@ struct OnboardingFlowView: View {
             path = [.createHousehold]
         case .addPet:
             path = [.addPet]
+        case .reviewInvitation(let token):
+            path = [.reviewInvitation(token)]
         }
     }
 }

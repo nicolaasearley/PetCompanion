@@ -11,6 +11,19 @@
 -->
 <plist version="1.0">
 <dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.nic.petcompanion</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>petcompanion</string>
+			</array>
+		</dict>
+	</array>
 	<key>PC_BACKEND_MODE</key>
 	<string>$(PC_BACKEND_MODE)</string>
 	<key>PC_SUPABASE_URL</key>

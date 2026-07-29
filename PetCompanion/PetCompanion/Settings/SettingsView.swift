@@ -13,6 +13,8 @@ struct SettingsView: View {
         case hub
         /// ST-04 — members & invitations.
         case members
+        /// Appointments & events (F11) — list lives outside Planner agenda WIP.
+        case events
         /// Changes the service refused, and the only place to clear them.
         case rejectedChanges
 
@@ -76,6 +78,10 @@ struct SettingsView: View {
             if let household = model.household {
                 HouseholdMembersView(household: household)
             }
+        case .events:
+            if let store = model.makeEventStore() {
+                EventsView(store: store)
+            }
         case .rejectedChanges:
             if let queue = model.mutationQueue {
                 RejectedChangesView(queue: queue)
@@ -92,6 +98,8 @@ struct SettingsView: View {
                 LabeledContent("Household", value: household.name)
                 NavigationLink("Members & invitations", value: Destination.members)
                     .accessibilityHint("Shows who belongs to this household and any invitations")
+                NavigationLink("Appointments & events", value: Destination.events)
+                    .accessibilityHint("Add or edit vet appointments and other household events")
             } header: {
                 Text("Household")
             } footer: {
@@ -199,6 +207,9 @@ struct SettingsView: View {
                 Task {
                     permission = await model.notifications.setEnabled(enabled)
                     preferences = model.notifications.preferences
+                    if preferences.enabled {
+                        await model.pushRegistration.refreshRegistration()
+                    }
                     isUpdatingNotifications = false
                 }
             }

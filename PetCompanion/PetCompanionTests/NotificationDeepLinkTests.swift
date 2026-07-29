@@ -59,6 +59,30 @@ final class NotificationDeepLinkTests: XCTestCase {
         )
     }
 
+    func testConfirmedEventReminderOpensPlanner() {
+        let event = eventFixture(status: .confirmed)
+        XCTAssertEqual(
+            NotificationDeepLinkResolver.resolveEvent(eventId: event.id, against: [event]),
+            .planner
+        )
+    }
+
+    func testCancelledOrMissingEventReminderDoesNotOpenPlanner() {
+        let cancelled = eventFixture(status: .cancelled)
+        XCTAssertEqual(
+            NotificationDeepLinkResolver.resolveEvent(eventId: cancelled.id, against: [cancelled]),
+            .unavailable(.targetNoLongerInPlan)
+        )
+        XCTAssertEqual(
+            NotificationDeepLinkResolver.resolveEvent(eventId: UUID(), against: [cancelled]),
+            .unavailable(.targetNoLongerInPlan)
+        )
+        XCTAssertEqual(
+            NotificationDeepLinkResolver.resolveEvent(eventId: cancelled.id, against: nil),
+            .unavailable(.planUnavailable)
+        )
+    }
+
     /// A tap can wake the app before any session exists, so the inbox has to
     /// hold the target instead of dropping it.
     func testTapArrivingBeforeTheAppIsReadyIsDeliveredLater() {
@@ -72,6 +96,26 @@ final class NotificationDeepLinkTests: XCTestCase {
 
         inbox.receive(target)
         XCTAssertEqual(delivered, [target, target])
+    }
+
+    private func eventFixture(status: EventStatus) -> HouseholdEvent {
+        HouseholdEvent(
+            id: UUID(),
+            householdId: UUID(),
+            petId: UUID(),
+            kind: .vetAppointment,
+            title: "Checkup",
+            startDate: Date(),
+            startTime: "14:00",
+            endTime: nil,
+            allDay: false,
+            locationText: nil,
+            providerId: nil,
+            notes: nil,
+            reminderLeadMinutes: [60],
+            status: status,
+            revision: 1
+        )
     }
 
     private func planFixture() -> (

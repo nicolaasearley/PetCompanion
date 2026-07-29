@@ -1,7 +1,27 @@
 import SwiftUI
+import UIKit
+
+final class PetCompanionAppDelegate: NSObject, UIApplicationDelegate {
+    weak var pushRegistration: (any RemotePushRegistering)?
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        pushRegistration?.didReceiveDeviceToken(deviceToken)
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        pushRegistration?.didFailToRegister(error: error)
+    }
+}
 
 @main
 struct PetCompanionApp: App {
+    @UIApplicationDelegateAdaptor(PetCompanionAppDelegate.self) private var appDelegate
     @State private var model = AppModel.bootstrap()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -20,7 +40,11 @@ struct PetCompanionApp: App {
                 .environment(model)
                 .tint(Color.pc.primary)
                 .task {
+                    appDelegate.pushRegistration = model.pushRegistration
                     await model.activateConfiguredBackend()
+                    // Backend activation may replace the push registration
+                    // instance with the live write-path transport.
+                    appDelegate.pushRegistration = model.pushRegistration
                     notificationInbox.setHandler { target in
                         Task { await model.open(target) }
                     }
@@ -32,7 +56,15 @@ struct PetCompanionApp: App {
                 }
                 .onChange(of: scenePhase) { _, phase in
                     guard phase == .active else { return }
-                    Task { await model.replayOfflineOperations() }
+                    Task {
+                        await model.replayOfflineOperations()
+                        await model.pushRegistration.refreshRegistration()
+                        model.refreshPlanAfterForeground()
+                        await model.refreshEventRemindersAfterForeground()
+                    }
+                }
+                .onOpenURL { url in
+                    Task { await model.open(url) }
                 }
         }
     }

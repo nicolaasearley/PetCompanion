@@ -19,15 +19,18 @@ struct AuthFormView: View {
     let mode: Mode
     let onAuthenticated: (UserAccount) -> Void
     let onConfirmationRequired: (String) -> Void
+    let onForgotPassword: () -> Void
 
     init(
         mode: Mode,
         onAuthenticated: @escaping (UserAccount) -> Void,
-        onConfirmationRequired: @escaping (String) -> Void = { _ in }
+        onConfirmationRequired: @escaping (String) -> Void = { _ in },
+        onForgotPassword: @escaping () -> Void = {}
     ) {
         self.mode = mode
         self.onAuthenticated = onAuthenticated
         self.onConfirmationRequired = onConfirmationRequired
+        self.onForgotPassword = onForgotPassword
     }
 
     @Environment(AppModel.self) private var model
@@ -74,6 +77,14 @@ struct AuthFormView: View {
                     isLoading: isSubmitting,
                     action: submit
                 )
+
+                if mode == .signIn {
+                    Button("Forgot password?", action: onForgotPassword)
+                        .font(Font.pc.body.weight(.medium))
+                        .foregroundStyle(Color.pc.primary)
+                        .frame(minHeight: PCMetrics.minTouchTarget)
+                        .frame(maxWidth: .infinity)
+                }
             }
             .padding(PCSpacing.screenMargin)
         }

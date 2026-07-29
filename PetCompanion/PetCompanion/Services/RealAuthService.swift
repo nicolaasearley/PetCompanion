@@ -18,9 +18,14 @@ import Supabase
 /// (`http://127.0.0.1:54324` in this environment) rather than a real inbox.
 @MainActor
 final class RealAuthService: AuthService {
+    static let passwordRecoveryRedirectURL = URL(string: "petcompanion://password-reset")!
+
     private let client: SupabaseClient
     private var _currentUser: UserAccount?
     private var authStateTask: Task<Void, Never>?
+    private var activeRecoveryOwnership: (handle: PasswordRecoverySession, userID: UUID)?
+    private var activeCallbackOwnership: (id: UUID, userID: UUID)?
+    private var recoveryExchangeInProgress = false
 
     var currentUser: UserAccount? { _currentUser }
 
@@ -49,7 +54,8 @@ final class RealAuthService: AuthService {
     }
 
     func createAccount(email: String, password: String) async throws -> AccountCreationResult {
-        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        invalidateRecoveryOwnership()
+        let trimmed = try AuthValidation.normalizedEmail(email)
         // Same shape as the mock's inline validation (ON-02 states) so the
         // form's error UI behaves identically before hitting the network.
         //
@@ -59,12 +65,7 @@ final class RealAuthService: AuthService {
         // supabase-swift/Sources/Supabase/Exports.swift) under the same
         // unqualified name `AuthError` — an unqualified reference here is
         // ambiguous between the two same-named types.
-        guard trimmed.contains("@"), trimmed.contains("."), trimmed.count >= 5 else {
-            throw PetCompanion.AuthError.invalidEmail
-        }
-        guard password.count >= 8 else {
-            throw PetCompanion.AuthError.weakPassword
-        }
+        try AuthValidation.validatePassword(password)
 
         let displayName = Self.displayName(fromEmail: trimmed)
         let response = try await client.auth.signUp(
@@ -91,7 +92,8 @@ final class RealAuthService: AuthService {
     }
 
     func signIn(email: String, password: String) async throws -> UserAccount {
-        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        invalidateRecoveryOwnership()
+        let trimmed = try AuthValidation.normalizedEmail(email)
         let session = try await client.auth.signIn(email: trimmed, password: password)
         let displayName = await ensureProfile(for: session.user)
         let account = UserAccount(id: session.user.id, displayName: displayName)
@@ -99,9 +101,105 @@ final class RealAuthService: AuthService {
         return account
     }
 
+    func requestPasswordReset(email: String) async throws {
+        let trimmed = try AuthValidation.normalizedEmail(email)
+        do {
+            try await client.auth.resetPasswordForEmail(
+                trimmed,
+                redirectTo: Self.passwordRecoveryRedirectURL
+            )
+        } catch {
+            throw PetCompanion.AuthError.resetRequestFailed
+        }
+    }
+
+    func establishPasswordRecoverySession(from url: URL) async throws -> PasswordRecoverySession {
+        // Defense in depth for the restore window: AppModel may not have
+        // published `currentUser` yet while the SDK has already restored its
+        // Keychain session. Never let a recovery callback replace it.
+        guard client.auth.currentSession == nil else {
+            throw PetCompanion.AuthError.recoveryRequiresSignOut
+        }
+        guard !recoveryExchangeInProgress else {
+            throw PetCompanion.AuthError.invalidRecoveryLink
+        }
+        guard AppURLRouter.destination(for: url) == .passwordRecovery else {
+            throw PetCompanion.AuthError.invalidRecoveryLink
+        }
+        recoveryExchangeInProgress = true
+        defer { recoveryExchangeInProgress = false }
+        do {
+            let session = try await client.auth.session(from: url)
+            let handle = PasswordRecoverySession()
+            activeRecoveryOwnership = (handle, session.user.id)
+            return handle
+        } catch {
+            throw PetCompanion.AuthError.invalidRecoveryLink
+        }
+    }
+
+    func updatePassword(_ password: String) async throws {
+        try AuthValidation.validatePassword(password)
+        do {
+            try await client.auth.update(user: UserAttributes(password: password))
+        } catch {
+            throw PetCompanion.AuthError.passwordUpdateFailed
+        }
+    }
+
+    func handleAuthenticationCallback(from url: URL) async throws -> AuthenticationCallbackSession {
+        invalidateRecoveryOwnership()
+        do {
+            let session = try await client.auth.session(from: url)
+            let displayName = await ensureProfile(for: session.user)
+            let account = UserAccount(id: session.user.id, displayName: displayName)
+            _currentUser = account
+            let callback = AuthenticationCallbackSession(user: account)
+            activeCallbackOwnership = (callback.id, account.id)
+            return callback
+        } catch {
+            throw PetCompanion.AuthError.invalidRecoveryLink
+        }
+    }
+
+    func discardPasswordRecoverySession(_ session: PasswordRecoverySession) async {
+        guard let ownership = activeRecoveryOwnership,
+              ownership.handle == session,
+              client.auth.currentSession?.user.id == ownership.userID
+        else {
+            return
+        }
+        activeRecoveryOwnership = nil
+        _currentUser = nil
+        try? await client.auth.signOut()
+    }
+
+    func completeAuthenticationCallbackSession(_ session: AuthenticationCallbackSession) {
+        guard activeCallbackOwnership?.id == session.id else { return }
+        activeCallbackOwnership = nil
+    }
+
+    func discardAuthenticationCallbackSession(_ session: AuthenticationCallbackSession) async {
+        guard let ownership = activeCallbackOwnership,
+              ownership.id == session.id,
+              client.auth.currentSession?.user.id == ownership.userID
+        else {
+            return
+        }
+        activeCallbackOwnership = nil
+        _currentUser = nil
+        try? await client.auth.signOut()
+    }
+
     func signOut() {
+        invalidateRecoveryOwnership()
+        activeCallbackOwnership = nil
         _currentUser = nil
         Task { try? await client.auth.signOut() }
+    }
+
+    private func invalidateRecoveryOwnership() {
+        activeRecoveryOwnership = nil
     }
 
     // MARK: - Profile

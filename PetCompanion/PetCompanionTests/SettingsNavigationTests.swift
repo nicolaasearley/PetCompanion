@@ -21,6 +21,11 @@ final class SettingsNavigationTests: XCTestCase {
             SettingsView.Destination.initialPath(opening: .rejectedChanges),
             [.rejectedChanges]
         )
+        XCTAssertEqual(
+            SettingsView.Destination.initialPath(opening: .events),
+            [.events],
+            "Appointments & events is named by the caller (F11 foundation)"
+        )
     }
 
     /// The sync summary has to distinguish work that will still be sent from

@@ -8,25 +8,44 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            switch model.backendMode {
-            case .resolving:
-                ProgressView("Connecting…")
-                    .tint(Color.pc.primary)
-            case .unavailable:
-                backendUnavailable
-            case .mock, .local, .hosted:
-                switch model.phase {
-                case .onboarding:
-                    OnboardingFlowView()
-                        .transition(.opacity)
-                case .main:
-                    MainTabView()
-                        .transition(.opacity)
+            if model.passwordRecoveryState != nil {
+                SetNewPasswordView()
+                    .transition(.opacity)
+            } else {
+                switch model.backendMode {
+                case .resolving:
+                    ProgressView("Connecting…")
+                        .tint(Color.pc.primary)
+                case .unavailable:
+                    backendUnavailable
+                case .mock, .local, .hosted:
+                    switch model.phase {
+                    case .onboarding:
+                        OnboardingFlowView()
+                            .transition(.opacity)
+                    case .main:
+                        MainTabView()
+                            .transition(.opacity)
+                    }
                 }
             }
         }
         .animation(.easeInOut(duration: 0.25), value: model.phase)
         .animation(.easeInOut(duration: 0.2), value: model.backendMode)
+        .animation(.easeInOut(duration: 0.2), value: model.passwordRecoveryState)
+        .alert(
+            model.appURLNotice?.title ?? "Link unavailable",
+            isPresented: Binding(
+                get: { model.appURLNotice != nil },
+                set: { if !$0 { model.dismissAppURLNotice() } }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                model.dismissAppURLNotice()
+            }
+        } message: {
+            Text(model.appURLNotice?.message ?? "Try again.")
+        }
     }
 
     private var backendUnavailable: some View {

@@ -7,22 +7,26 @@ struct AppDeepLinkTarget: Codable, Equatable, Hashable, Sendable {
         case home
         case planner
         case planItem = "plan_item"
+        case event
     }
 
     let destination: Destination
     var petId: UUID?
     var planItemId: UUID?
+    var eventId: UUID?
     var localDate: Date?
 
     init(
         destination: Destination,
         petId: UUID? = nil,
         planItemId: UUID? = nil,
+        eventId: UUID? = nil,
         localDate: Date? = nil
     ) {
         self.destination = destination
         self.petId = petId
         self.planItemId = planItemId
+        self.eventId = eventId
         self.localDate = localDate
     }
 
@@ -35,11 +39,20 @@ struct AppDeepLinkTarget: Codable, Equatable, Hashable, Sendable {
         )
     }
 
+    static func event(_ eventId: UUID, petId: UUID? = nil) -> AppDeepLinkTarget {
+        AppDeepLinkTarget(
+            destination: .event,
+            petId: petId,
+            eventId: eventId
+        )
+    }
+
     var notificationUserInfo: [String: String] {
         [
             "destination": destination.rawValue,
             "pet_id": petId?.uuidString ?? "",
             "plan_item_id": planItemId?.uuidString ?? "",
+            "event_id": eventId?.uuidString ?? "",
             "local_date": localDate.map(SupabaseCoding.iso8601String) ?? "",
         ]
     }
@@ -51,12 +64,16 @@ struct AppDeepLinkTarget: Codable, Equatable, Hashable, Sendable {
         self.destination = destination
         petId = nil
         planItemId = nil
+        eventId = nil
         localDate = nil
         if let raw = notificationUserInfo["pet_id"] as? String {
             petId = UUID(uuidString: raw)
         }
         if let raw = notificationUserInfo["plan_item_id"] as? String {
             planItemId = UUID(uuidString: raw)
+        }
+        if let raw = notificationUserInfo["event_id"] as? String {
+            eventId = UUID(uuidString: raw)
         }
         if let raw = notificationUserInfo["local_date"] as? String {
             let formatter = ISO8601DateFormatter()
@@ -88,6 +105,23 @@ struct LocalNotificationCandidate: Equatable, Identifiable, Sendable {
     let fireDate: Date
     let timeZoneId: String
     let deepLink: AppDeepLinkTarget
+    /// Discreet lock-screen body. Never includes titles, notes, or health detail.
+    let body: String
+
+    static let planBody = "A plan item is coming up."
+    static let eventBody = "An appointment is coming up."
+}
+
+enum LocalNotificationQuietHours {
+    static func contains(_ hour: Int, start: Int, end: Int) -> Bool {
+        let normalizedStart = min(max(start, 0), 23)
+        let normalizedEnd = min(max(end, 0), 23)
+        if normalizedStart == normalizedEnd { return false }
+        if normalizedStart < normalizedEnd {
+            return hour >= normalizedStart && hour < normalizedEnd
+        }
+        return hour >= normalizedStart || hour < normalizedEnd
+    }
 }
 
 /// Pure plan-to-reminder selection. Only pending, verified obligations with
@@ -157,7 +191,7 @@ enum LocalNotificationCandidateBuilder {
                   ),
                   fireDate > now,
                   fireDate <= horizon,
-                  !isQuietHour(
+                  !LocalNotificationQuietHours.contains(
                     householdCalendar.component(.hour, from: fireDate),
                     start: preferences.quietHoursStart,
                     end: preferences.quietHoursEnd
@@ -177,20 +211,100 @@ enum LocalNotificationCandidateBuilder {
                     // decodes at GMT. Handing the raw value over would ask a
                     // Toronto household for the previous day's plan.
                     date: snapshot.plan.localDayStart(in: timeZone)
-                )
+                ),
+                body: LocalNotificationCandidate.planBody
             )
         }
         .sorted { $0.fireDate < $1.fireDate }
     }
+}
 
-    private static func isQuietHour(_ hour: Int, start: Int, end: Int) -> Bool {
-        let normalizedStart = min(max(start, 0), 23)
-        let normalizedEnd = min(max(end, 0), 23)
-        if normalizedStart == normalizedEnd { return false }
-        if normalizedStart < normalizedEnd {
-            return hour >= normalizedStart && hour < normalizedEnd
+/// Pure event-to-reminder selection (US-086 parity on-device). Confirmed
+/// events with `reminder_config.lead_minutes` schedule one candidate per
+/// lead; cancelled/archived rows produce none. Copy stays discreet.
+enum EventLocalNotificationCandidateBuilder {
+    static func candidates(
+        events: [HouseholdEvent],
+        timeZoneId: String,
+        preferences: LocalNotificationPreferences,
+        now: Date = Date()
+    ) -> [LocalNotificationCandidate] {
+        guard preferences.enabled,
+              let timeZone = TimeZone(identifier: timeZoneId)
+        else { return [] }
+        var householdCalendar = Calendar(identifier: .gregorian)
+        householdCalendar.timeZone = timeZone
+        let horizon = householdCalendar.date(byAdding: .day, value: 7, to: now) ?? now
+
+        return events.flatMap { event -> [LocalNotificationCandidate] in
+            guard event.status == .confirmed,
+                  !event.reminderLeadMinutes.isEmpty,
+                  let startInstant = startInstant(for: event, calendar: householdCalendar, timeZone: timeZone)
+            else { return [] }
+
+            return event.reminderLeadMinutes.compactMap { lead in
+                let leadMinutes = max(0, min(lead, 10_080))
+                guard let fireDate = householdCalendar.date(
+                    byAdding: .minute,
+                    value: -leadMinutes,
+                    to: startInstant
+                ),
+                fireDate > now,
+                fireDate <= horizon,
+                !LocalNotificationQuietHours.contains(
+                    householdCalendar.component(.hour, from: fireDate),
+                    start: preferences.quietHoursStart,
+                    end: preferences.quietHoursEnd
+                )
+                else { return nil }
+
+                return LocalNotificationCandidate(
+                    id: "\(event.id.uuidString):\(leadMinutes)",
+                    fireDate: fireDate,
+                    timeZoneId: timeZoneId,
+                    deepLink: .event(event.id, petId: event.petId),
+                    body: LocalNotificationCandidate.eventBody
+                )
+            }
         }
-        return hour >= normalizedStart || hour < normalizedEnd
+        .sorted { $0.fireDate < $1.fireDate }
+    }
+
+    /// Mirrors server `resolve_household_wall_time`: all-day / missing time
+    /// uses household midnight; timed events use `start_time` wall clock.
+    /// `start_date` is re-anchored from midnight-GMT decode the same way plan
+    /// due dates are.
+    static func startInstant(
+        for event: HouseholdEvent,
+        calendar: Calendar,
+        timeZone: TimeZone
+    ) -> Date? {
+        let dayStart = localDayStart(event.startDate, in: timeZone)
+        if event.allDay || event.startTime == nil {
+            return dayStart
+        }
+        let parts = (event.startTime ?? "").split(separator: ":")
+        guard parts.count >= 2,
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]),
+              (0...23).contains(hour),
+              (0...59).contains(minute)
+        else { return dayStart }
+        return calendar.date(
+            bySettingHour: hour,
+            minute: minute,
+            second: 0,
+            of: dayStart
+        )
+    }
+
+    private static func localDayStart(_ date: Date, in timeZone: TimeZone) -> Date {
+        var gmt = Calendar(identifier: .gregorian)
+        gmt.timeZone = .gmt
+        let parts = gmt.dateComponents([.year, .month, .day], from: date)
+        var household = Calendar(identifier: .gregorian)
+        household.timeZone = timeZone
+        return household.date(from: parts) ?? date
     }
 }
 
@@ -211,6 +325,7 @@ struct LocalNotificationRequest: Equatable, Sendable {
     let fireDate: Date
     let timeZoneId: String
     let deepLink: AppDeepLinkTarget
+    let body: String
 }
 
 @MainActor
@@ -259,7 +374,7 @@ final class UserNotificationCenterClient: LocalNotificationCenterClient {
         for request in requests.prefix(48) {
             let content = UNMutableNotificationContent()
             content.title = "PetCompanion"
-            content.body = "A plan item is coming up."
+            content.body = request.body
             content.sound = .default
             content.userInfo = request.deepLink.notificationUserInfo
 
@@ -301,6 +416,11 @@ protocol LocalNotificationServicing: AnyObject {
     func setEnabled(_ enabled: Bool) async -> NotificationPermission
     func updatePreferences(_ preferences: LocalNotificationPreferences) async
     func reconcile(snapshot: PlanSnapshot, now: Date) async
+    func reconcileEvents(
+        events: [HouseholdEvent],
+        timeZoneId: String,
+        now: Date
+    ) async
     func cancelPending() async
 }
 
@@ -309,6 +429,10 @@ extension LocalNotificationServicing {
     /// explicit `now` so candidate expiry does not depend on the wall clock.
     func reconcile(snapshot: PlanSnapshot) async {
         await reconcile(snapshot: snapshot, now: Date())
+    }
+
+    func reconcileEvents(events: [HouseholdEvent], timeZoneId: String) async {
+        await reconcileEvents(events: events, timeZoneId: timeZoneId, now: Date())
     }
 }
 
@@ -342,6 +466,8 @@ final class LocalNotificationPreferenceStore {
 
 /// Local-only notification coordinator. It never requests permission on app
 /// launch: the prompt appears solely after an explicit enable action, once.
+/// Plan and Event reminders use separate namespaces so reconciling one never
+/// clears the other.
 @MainActor
 @Observable
 final class LocalNotificationService: LocalNotificationServicing {
@@ -351,6 +477,8 @@ final class LocalNotificationService: LocalNotificationServicing {
     private(set) var permission = NotificationPermission.notDetermined
     private var activeAccountId: UUID?
     private var lastSnapshot: PlanSnapshot?
+    private var lastEvents: [HouseholdEvent] = []
+    private var lastEventTimeZoneId: String?
 
     init(
         center: any LocalNotificationCenterClient,
@@ -367,22 +495,34 @@ final class LocalNotificationService: LocalNotificationServicing {
     func activate(accountId: UUID) {
         guard activeAccountId != accountId else { return }
         if let previousAccountId = activeAccountId {
-            let previousNamespace = Self.namespace(accountId: previousAccountId)
-            Task { await center.removePending(namespace: previousNamespace) }
+            let previousPlan = Self.planNamespace(accountId: previousAccountId)
+            let previousEvents = Self.eventNamespace(accountId: previousAccountId)
+            Task {
+                await center.removePending(namespace: previousPlan)
+                await center.removePending(namespace: previousEvents)
+            }
         }
         activeAccountId = accountId
         preferences = store.load(accountId: accountId)
         lastSnapshot = nil
+        lastEvents = []
+        lastEventTimeZoneId = nil
         Task { permission = await center.permission() }
     }
 
     func deactivate() {
-        let namespace = activeAccountId.map { Self.namespace(accountId: $0) }
+        let planNamespace = activeAccountId.map { Self.planNamespace(accountId: $0) }
+        let eventNamespace = activeAccountId.map { Self.eventNamespace(accountId: $0) }
         activeAccountId = nil
         lastSnapshot = nil
+        lastEvents = []
+        lastEventTimeZoneId = nil
         preferences = .defaults
-        if let namespace {
-            Task { await center.removePending(namespace: namespace) }
+        if let planNamespace {
+            Task { await center.removePending(namespace: planNamespace) }
+        }
+        if let eventNamespace {
+            Task { await center.removePending(namespace: eventNamespace) }
         }
     }
 
@@ -408,9 +548,14 @@ final class LocalNotificationService: LocalNotificationServicing {
 
         preferences.enabled = permission == .authorized || permission == .provisional
         store.save(preferences, accountId: accountId)
-        if preferences.enabled, let lastSnapshot {
-            await reconcile(snapshot: lastSnapshot)
-        } else if !preferences.enabled {
+        if preferences.enabled {
+            if let lastSnapshot {
+                await reconcile(snapshot: lastSnapshot)
+            }
+            if let lastEventTimeZoneId {
+                await reconcileEvents(events: lastEvents, timeZoneId: lastEventTimeZoneId)
+            }
+        } else {
             await cancelPending()
         }
         return permission
@@ -423,13 +568,16 @@ final class LocalNotificationService: LocalNotificationServicing {
         if let lastSnapshot {
             await reconcile(snapshot: lastSnapshot)
         }
+        if let lastEventTimeZoneId {
+            await reconcileEvents(events: lastEvents, timeZoneId: lastEventTimeZoneId)
+        }
     }
 
     func reconcile(snapshot: PlanSnapshot, now: Date) async {
         lastSnapshot = snapshot
         guard let accountId = activeAccountId else { return }
         permission = await center.permission()
-        let namespace = Self.namespace(accountId: accountId)
+        let namespace = Self.planNamespace(accountId: accountId)
         guard preferences.enabled,
               permission == .authorized || permission == .provisional
         else {
@@ -446,7 +594,8 @@ final class LocalNotificationService: LocalNotificationServicing {
                 identifier: namespace + candidate.id,
                 fireDate: candidate.fireDate,
                 timeZoneId: candidate.timeZoneId,
-                deepLink: candidate.deepLink
+                deepLink: candidate.deepLink,
+                body: candidate.body
             )
         }
         do {
@@ -457,12 +606,55 @@ final class LocalNotificationService: LocalNotificationServicing {
         }
     }
 
-    func cancelPending() async {
-        guard let activeAccountId else { return }
-        await center.removePending(namespace: Self.namespace(accountId: activeAccountId))
+    func reconcileEvents(
+        events: [HouseholdEvent],
+        timeZoneId: String,
+        now: Date
+    ) async {
+        lastEvents = events
+        lastEventTimeZoneId = timeZoneId
+        guard let accountId = activeAccountId else { return }
+        permission = await center.permission()
+        let namespace = Self.eventNamespace(accountId: accountId)
+        guard preferences.enabled,
+              permission == .authorized || permission == .provisional
+        else {
+            await center.removePending(namespace: namespace)
+            return
+        }
+
+        let requests = EventLocalNotificationCandidateBuilder.candidates(
+            events: events,
+            timeZoneId: timeZoneId,
+            preferences: preferences,
+            now: now
+        ).map { candidate in
+            LocalNotificationRequest(
+                identifier: namespace + candidate.id,
+                fireDate: candidate.fireDate,
+                timeZoneId: candidate.timeZoneId,
+                deepLink: candidate.deepLink,
+                body: candidate.body
+            )
+        }
+        do {
+            try await center.replacePending(namespace: namespace, requests: requests)
+        } catch {
+            // Same as plan reconcile: failure is transient; a later load retries.
+        }
     }
 
-    private static func namespace(accountId: UUID) -> String {
+    func cancelPending() async {
+        guard let activeAccountId else { return }
+        await center.removePending(namespace: Self.planNamespace(accountId: activeAccountId))
+        await center.removePending(namespace: Self.eventNamespace(accountId: activeAccountId))
+    }
+
+    private static func planNamespace(accountId: UUID) -> String {
         "pc.local.\(accountId.uuidString)."
+    }
+
+    private static func eventNamespace(accountId: UUID) -> String {
+        "pc.event.\(accountId.uuidString)."
     }
 }

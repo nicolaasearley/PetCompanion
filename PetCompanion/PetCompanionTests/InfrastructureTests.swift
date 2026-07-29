@@ -30,6 +30,16 @@ final class InfrastructureTests: XCTestCase {
         }
     }
 
+    func testBundleRegistersPetCompanionURLScheme() throws {
+        let info = try XCTUnwrap(Bundle.main.infoDictionary)
+        let urlTypes = try XCTUnwrap(info["CFBundleURLTypes"] as? [[String: Any]])
+        let schemes = urlTypes.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
+        XCTAssertTrue(
+            schemes.contains(InvitationToken.scheme),
+            "BackendInfo.plist must register the same scheme used by invitation and Auth links"
+        )
+    }
+
     func testBackendSelectionRequiresHostedCredentials() {
         let selection = BackendSelection.resolve(
             environment: [:],

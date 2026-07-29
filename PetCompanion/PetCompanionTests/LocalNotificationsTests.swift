@@ -165,6 +165,155 @@ final class LocalNotificationsTests: XCTestCase {
         XCTAssertTrue(center.removals.contains(replacement.0))
     }
 
+    func testEventCandidateUsesEachLeadAndDiscreetCopy() throws {
+        // Start tomorrow so a 1-day lead still fires after `now`.
+        let fixture = eventReminderFixture(
+            hour: 15,
+            leads: [60, 1440],
+            startDay: 28
+        )
+        var preferences = LocalNotificationPreferences.defaults
+        preferences.enabled = true
+
+        let candidates = EventLocalNotificationCandidateBuilder.candidates(
+            events: [fixture.event],
+            timeZoneId: "America/Toronto",
+            preferences: preferences,
+            now: fixture.now
+        )
+
+        XCTAssertEqual(candidates.count, 2)
+        XCTAssertEqual(
+            Set(candidates.map(\.body)),
+            [LocalNotificationCandidate.eventBody]
+        )
+        XCTAssertTrue(candidates.allSatisfy { $0.deepLink.destination == .event })
+        XCTAssertTrue(candidates.allSatisfy { $0.deepLink.eventId == fixture.event.id })
+        XCTAssertFalse(
+            candidates.contains(where: {
+                $0.body.localizedCaseInsensitiveContains("vet")
+                    || $0.body.localizedCaseInsensitiveContains(fixture.event.title)
+            })
+        )
+
+        let hourLead = try XCTUnwrap(candidates.first { $0.id.hasSuffix(":60") })
+        XCTAssertEqual(
+            hourLead.fireDate.timeIntervalSince(fixture.startInstant),
+            -3600,
+            accuracy: 1
+        )
+        let dayLead = try XCTUnwrap(candidates.first { $0.id.hasSuffix(":1440") })
+        XCTAssertEqual(
+            dayLead.fireDate.timeIntervalSince(fixture.startInstant),
+            -86_400,
+            accuracy: 1
+        )
+
+        var toronto = Calendar(identifier: .gregorian)
+        toronto.timeZone = TimeZone(identifier: "America/Toronto")!
+        XCTAssertEqual(
+            toronto.dateComponents([.year, .month, .day], from: hourLead.fireDate),
+            DateComponents(year: 2026, month: 7, day: 28),
+            "west-of-GMT households must not schedule event reminders a day early"
+        )
+    }
+
+    func testEventCandidateBuilderSkipsCancelledQuietAndEmptyLeads() {
+        var preferences = LocalNotificationPreferences.defaults
+        preferences.enabled = true
+        preferences.quietHoursStart = 21
+        preferences.quietHoursEnd = 7
+
+        let quiet = eventReminderFixture(hour: 22, leads: [0])
+        XCTAssertTrue(
+            EventLocalNotificationCandidateBuilder.candidates(
+                events: [quiet.event],
+                timeZoneId: "America/Toronto",
+                preferences: preferences,
+                now: quiet.now
+            ).isEmpty
+        )
+
+        let cancelled = eventReminderFixture(hour: 15, leads: [60], status: .cancelled)
+        XCTAssertTrue(
+            EventLocalNotificationCandidateBuilder.candidates(
+                events: [cancelled.event],
+                timeZoneId: "America/Toronto",
+                preferences: preferences,
+                now: cancelled.now
+            ).isEmpty
+        )
+
+        let noLeads = eventReminderFixture(hour: 15, leads: [])
+        XCTAssertTrue(
+            EventLocalNotificationCandidateBuilder.candidates(
+                events: [noLeads.event],
+                timeZoneId: "America/Toronto",
+                preferences: preferences,
+                now: noLeads.now
+            ).isEmpty
+        )
+    }
+
+    func testEventReconcileUsesSeparateNamespaceAndCancelClearsBoth() async throws {
+        let suiteName = "LocalNotificationsTests-events-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let accountId = UUID()
+        let center = NotificationCenter(permission: .authorized)
+        let service = LocalNotificationService(
+            center: center,
+            store: LocalNotificationPreferenceStore(defaults: defaults)
+        )
+        service.activate(accountId: accountId)
+        _ = await service.setEnabled(true)
+
+        let planFixture = reminderFixture(hour: 15)
+        await service.reconcile(snapshot: planFixture.snapshot, now: planFixture.now)
+
+        let eventFixture = eventReminderFixture(hour: 16, leads: [60])
+        await service.reconcileEvents(
+            events: [eventFixture.event],
+            timeZoneId: "America/Toronto",
+            now: eventFixture.now
+        )
+
+        let planNamespace = "pc.local.\(accountId.uuidString)."
+        let eventNamespace = "pc.event.\(accountId.uuidString)."
+        XCTAssertEqual(center.replacements.map(\.0), [planNamespace, eventNamespace])
+
+        let eventReplacement = try XCTUnwrap(center.replacements.last)
+        XCTAssertEqual(eventReplacement.1.count, 1)
+        let request = try XCTUnwrap(eventReplacement.1.first)
+        XCTAssertTrue(request.identifier.hasPrefix(eventNamespace))
+        XCTAssertEqual(request.body, LocalNotificationCandidate.eventBody)
+        XCTAssertEqual(request.deepLink.destination, .event)
+
+        // Plan reconcile must not wipe the event namespace.
+        await service.reconcile(snapshot: planFixture.snapshot, now: planFixture.now)
+        XCTAssertEqual(center.replacements.map(\.0).filter { $0 == eventNamespace }.count, 1)
+
+        // Cancelled event replaces with empty event namespace.
+        let cancelled = eventReminderFixture(
+            hour: 16,
+            leads: [60],
+            status: .cancelled,
+            id: eventFixture.event.id
+        )
+        await service.reconcileEvents(
+            events: [cancelled.event],
+            timeZoneId: "America/Toronto",
+            now: eventFixture.now
+        )
+        let cleared = try XCTUnwrap(center.replacements.last)
+        XCTAssertEqual(cleared.0, eventNamespace)
+        XCTAssertTrue(cleared.1.isEmpty)
+
+        await service.cancelPending()
+        XCTAssertTrue(center.removals.contains(planNamespace))
+        XCTAssertTrue(center.removals.contains(eventNamespace))
+    }
+
     private func reminderFixture(
         hour: Int
     ) -> (snapshot: PlanSnapshot, now: Date, dueDate: Date, itemId: UUID) {
@@ -228,5 +377,45 @@ final class LocalNotificationsTests: XCTestCase {
             dueDate,
             item.id
         )
+    }
+
+    private func eventReminderFixture(
+        hour: Int,
+        leads: [Int],
+        status: EventStatus = .confirmed,
+        id: UUID = UUID(),
+        startDay: Int = 27
+    ) -> (event: HouseholdEvent, now: Date, startInstant: Date) {
+        var householdCalendar = Calendar(identifier: .gregorian)
+        householdCalendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        var gmtCalendar = Calendar(identifier: .gregorian)
+        gmtCalendar.timeZone = .gmt
+        let startDate = gmtCalendar.date(
+            from: DateComponents(year: 2026, month: 7, day: startDay)
+        )!
+        let now = householdCalendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 27, hour: 10)
+        )!
+        let startInstant = householdCalendar.date(
+            from: DateComponents(year: 2026, month: 7, day: startDay, hour: hour)
+        )!
+        let event = HouseholdEvent(
+            id: id,
+            householdId: UUID(),
+            petId: UUID(),
+            kind: .vetAppointment,
+            title: "Private vet notes must stay off banners",
+            startDate: startDate,
+            startTime: String(format: "%02d:00", hour),
+            endTime: nil,
+            allDay: false,
+            locationText: nil,
+            providerId: nil,
+            notes: "Sensitive health detail",
+            reminderLeadMinutes: leads,
+            status: status,
+            revision: 1
+        )
+        return (event, now, startInstant)
     }
 }

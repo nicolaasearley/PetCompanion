@@ -63,7 +63,28 @@ enum NotificationDeepLinkResolver {
                 return .unavailable(.targetNoLongerInPlan)
             }
             return .planItem(id: planItemId)
+        case .event:
+            // Event taps resolve against a freshly loaded event list in
+            // `AppModel`; this branch covers home/planner-style fallbacks
+            // when only the destination is known.
+            return .planner
         }
+    }
+
+    /// Confirmed events open Planner (US-080 agenda). Cancelled or missing
+    /// appointments never pretend they are still on the calendar.
+    static func resolveEvent(
+        eventId: UUID,
+        against events: [HouseholdEvent]?
+    ) -> ResolvedDeepLink {
+        guard let events else { return .unavailable(.planUnavailable) }
+        guard let event = events.first(where: { $0.id == eventId }) else {
+            return .unavailable(.targetNoLongerInPlan)
+        }
+        guard event.status == .confirmed else {
+            return .unavailable(.targetNoLongerInPlan)
+        }
+        return .planner
     }
 
     /// Why a failed plan read could not open the reminder's target.

@@ -24,91 +24,113 @@ struct PlanItemDetailSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PCSpacing.lg) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(item.title)
-                    .font(Font.pc.title)
-                    .foregroundStyle(Color.pc.ink)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                // Explicit close for assistive tech (doc 09 §7.4).
-                Button("Close") { dismiss() }
-                    .font(Font.pc.secondary)
-                    .foregroundStyle(Color.pc.primary)
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: PCSpacing.lg) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(item.title)
+                        .font(Font.pc.title)
+                        .foregroundStyle(Color.pc.ink)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    // Explicit close for assistive tech (doc 09 §7.4).
+                    Button("Close") { dismiss() }
+                        .font(Font.pc.secondary)
+                        .foregroundStyle(Color.pc.primary)
+                }
 
-            // Obligation class conveyed by label, never color alone.
-            Text("\(item.category.displayName) · \(item.obligationClass.displayName)")
-                .font(Font.pc.secondary)
-                .foregroundStyle(Color.pc.inkSecondary)
-
-            if let meta {
-                Text(meta)
+                // Obligation class conveyed by label, never color alone.
+                Text("\(item.category.displayName) · \(item.obligationClass.displayName)")
                     .font(Font.pc.secondary)
                     .foregroundStyle(Color.pc.inkSecondary)
-            }
 
-            if case .completed(let attribution) = state, let attribution {
-                Text("Completed \(attribution)")
-                    .font(Font.pc.secondary)
-                    .foregroundStyle(Color.pc.success)
-            }
-
-            if let explanation = item.explanationText {
-                VStack(alignment: .leading, spacing: PCSpacing.sm) {
-                    Text("Why this?")
-                        .font(Font.pc.heading)
+                if let meta {
+                    Text(meta)
+                        .font(Font.pc.secondary)
                         .foregroundStyle(Color.pc.inkSecondary)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(explanation)
-                        .font(Font.pc.body)
-                        .foregroundStyle(Color.pc.ink)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(PCSpacing.cardPadding)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
-                        .fill(Color.pc.surfaceSubtle)
-                )
+
+                if case .completed(let attribution) = state, let attribution {
+                    Text("Completed \(attribution)")
+                        .font(Font.pc.secondary)
+                        .foregroundStyle(Color.pc.success)
+                }
+
+                if let explanation = item.explanationText {
+                    VStack(alignment: .leading, spacing: PCSpacing.sm) {
+                        Text("Why this?")
+                            .font(Font.pc.heading)
+                            .foregroundStyle(Color.pc.inkSecondary)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(explanation)
+                            .font(Font.pc.body)
+                            .foregroundStyle(Color.pc.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(PCSpacing.cardPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
+                            .fill(Color.pc.surfaceSubtle)
+                    )
+                }
+
+                if let actionError {
+                    Label(actionError, systemImage: "exclamationmark.triangle")
+                        .font(Font.pc.secondary)
+                        .foregroundStyle(Color.pc.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityElement(children: .combine)
+                }
             }
-
-            if let actionError {
-                Label(actionError, systemImage: "exclamationmark.triangle")
-                    .font(Font.pc.secondary)
-                    .foregroundStyle(Color.pc.danger)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityElement(children: .combine)
-            }
-
-            Spacer(minLength: 0)
-
+            .padding(PCSpacing.screenMargin)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .background(Color.pc.surface)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            // Pinned outside the scrolling region so the sheet's single
+            // interaction — accept a recommendation, or complete an item —
+            // is always reachable, regardless of Dynamic Type size.
             if let primaryActionTitle, let onPrimaryAction {
-                PrimaryButton(title: primaryActionTitle, isLoading: isWorking) {
-                    isWorking = true
-                    actionError = nil
-                    Task {
-                        do {
-                            try await onPrimaryAction()
-                            dismiss()
-                        } catch {
-                            actionError = error.localizedDescription
-                            isWorking = false
+                bottomActionBar {
+                    PrimaryButton(title: primaryActionTitle, isLoading: isWorking) {
+                        isWorking = true
+                        actionError = nil
+                        Task {
+                            do {
+                                try await onPrimaryAction()
+                                dismiss()
+                            } catch {
+                                actionError = error.localizedDescription
+                                isWorking = false
+                            }
                         }
                     }
                 }
             } else if allowsCompletion {
-                PrimaryButton(title: isCompleted ? "Undo completion" : "Mark complete") {
-                    onToggleComplete()
-                    dismiss()
+                bottomActionBar {
+                    PrimaryButton(title: isCompleted ? "Undo completion" : "Mark complete") {
+                        onToggleComplete()
+                        dismiss()
+                    }
                 }
             }
         }
-        .padding(PCSpacing.screenMargin)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.pc.surface)
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private func bottomActionBar<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(Color.pc.border)
+                .frame(height: 1)
+            content()
+                .padding(.horizontal, PCSpacing.screenMargin)
+                .padding(.top, PCSpacing.md)
+                .padding(.bottom, PCSpacing.sm)
+        }
+        .background(Color.pc.surface)
     }
 }
 

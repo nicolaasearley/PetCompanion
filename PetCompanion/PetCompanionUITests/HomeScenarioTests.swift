@@ -83,7 +83,11 @@ final class HomeScenarioTests: ReviewScenarioCase {
             [app.alerts.firstMatch],
             describedAs: "quick add alert"
         ) else { return }
-        driver.capture("quick-add-task")
+        // The keyboard stays up for this one. This alert's text field is the
+        // subject of the screenshot, and the usual pre-capture dismissal
+        // types Return into it — which the alert takes as its default action
+        // and closes, leaving a photograph of Home instead.
+        driver.capture("quick-add-task", dismissingKeyboard: false)
         let cancel = app.alerts.buttons["Cancel"]
         if cancel.exists { cancel.tap() }
     }

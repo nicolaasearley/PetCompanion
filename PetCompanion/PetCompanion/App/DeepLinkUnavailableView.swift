@@ -12,17 +12,17 @@ struct DeepLinkUnavailableView: View {
     let onCreateHousehold: () -> Void
 
     var body: some View {
-        VStack {
+        ScrollView {
             EmptyStateView(
                 systemImage: symbol,
                 message: message,
                 primaryActionTitle: primaryActionTitle,
                 primaryAction: primaryAction
             )
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.pc.bg.ignoresSafeArea())
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
 

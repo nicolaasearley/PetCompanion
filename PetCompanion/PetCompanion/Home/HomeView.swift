@@ -260,6 +260,7 @@ private struct HomeContentView: View {
             }
         }
         .redacted(reason: .placeholder)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Loading today's plan")
     }
 

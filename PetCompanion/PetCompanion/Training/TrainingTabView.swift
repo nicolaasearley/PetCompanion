@@ -66,7 +66,14 @@ struct TrainingTabView: View {
             .padding(.bottom, PCSpacing.sm)
         }
         .buttonStyle(.plain)
-        .background(.thinMaterial)
+        .background(
+            Color.pc.bg
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(Color.pc.border)
+                        .frame(height: 1)
+                }
+        )
         .accessibilityHint("Opens the socialization passport")
     }
 }

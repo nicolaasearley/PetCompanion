@@ -1,42 +1,129 @@
 import SwiftUI
 
+/// CA-01 — Care overview. Weight, providers, medications, vaccinations,
+/// grooming, notes (with document photo attach), and appointments are live.
 struct CareView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                if let pet = model.activePet {
+                if model.household != nil {
                     VStack(alignment: .leading, spacing: PCSpacing.betweenSections) {
-                        petCard(pet)
+                        if let pet = model.activePet {
+                            petCard(pet)
+                        } else {
+                            EmptyStateView(
+                                systemImage: "pawprint",
+                                message: "Add a pet to start weight and other pet-scoped care records."
+                            )
+                        }
 
                         VStack(alignment: .leading, spacing: PCSpacing.betweenCards) {
                             SectionHeader(title: "Care records")
-                            CareDestinationRow(
-                                title: "Vaccinations",
-                                subtitle: "Record tracking is planned",
-                                systemImage: "syringe"
-                            )
-                            CareDestinationRow(
-                                title: "Weight & growth",
-                                subtitle: "Growth entries are planned",
-                                systemImage: "chart.line.uptrend.xyaxis"
-                            )
-                            CareDestinationRow(
-                                title: "Grooming",
-                                subtitle: "Routine history is planned",
-                                systemImage: "comb"
-                            )
-                            CareDestinationRow(
-                                title: "Notes & documents",
-                                subtitle: "Secure document storage is planned",
-                                systemImage: "doc.text"
-                            )
-                            CareDestinationRow(
-                                title: "Providers",
-                                subtitle: "Provider contacts are planned",
-                                systemImage: "cross.case"
-                            )
+
+                            if let pet = model.activePet {
+                                NavigationLink {
+                                    if let medsStore = model.makeMedicationsStore() {
+                                        MedicationsView(store: medsStore)
+                                    }
+                                } label: {
+                                    CareDestinationRow(
+                                        title: "Medications",
+                                        subtitle: "Schedules and doses for \(pet.name)",
+                                        systemImage: "pills",
+                                        status: .available
+                                    )
+                                }
+                                .buttonStyle(.plain)
+
+                                NavigationLink {
+                                    if let weightStore = model.makeWeightStore() {
+                                        WeightGrowthView(store: weightStore)
+                                    }
+                                } label: {
+                                    CareDestinationRow(
+                                        title: "Weight & growth",
+                                        subtitle: "Dated entries for \(pet.name)",
+                                        systemImage: "chart.line.uptrend.xyaxis",
+                                        status: .available
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            NavigationLink {
+                                if let eventStore = model.makeEventStore() {
+                                    EventsView(store: eventStore)
+                                }
+                            } label: {
+                                CareDestinationRow(
+                                    title: "Appointments & events",
+                                    subtitle: "Vet visits, classes, and other dates",
+                                    systemImage: "calendar",
+                                    status: .available
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Add or edit vet appointments and other household events")
+
+                            NavigationLink {
+                                if let providersStore = model.makeProvidersStore() {
+                                    ProvidersView(store: providersStore)
+                                }
+                            } label: {
+                                CareDestinationRow(
+                                    title: "Providers",
+                                    subtitle: "Veterinarians and other contacts",
+                                    systemImage: "cross.case",
+                                    status: .available
+                                )
+                            }
+                            .buttonStyle(.plain)
+
+                            if let pet = model.activePet {
+                                NavigationLink {
+                                    if let vaccinationsStore = model.makeVaccinationStore() {
+                                        VaccinationsView(store: vaccinationsStore)
+                                    }
+                                } label: {
+                                    CareDestinationRow(
+                                        title: "Vaccinations",
+                                        subtitle: "History for \(pet.name)",
+                                        systemImage: "syringe",
+                                        status: .available
+                                    )
+                                }
+                                .buttonStyle(.plain)
+
+                                NavigationLink {
+                                    if let groomingStore = model.makeGroomingStore() {
+                                        GroomingView(store: groomingStore)
+                                    }
+                                } label: {
+                                    CareDestinationRow(
+                                        title: "Grooming",
+                                        subtitle: "History for \(pet.name)",
+                                        systemImage: "comb",
+                                        status: .available
+                                    )
+                                }
+                                .buttonStyle(.plain)
+
+                                NavigationLink {
+                                    if let notesStore = model.makeCareNoteStore() {
+                                        CareNotesView(store: notesStore)
+                                    }
+                                } label: {
+                                    CareDestinationRow(
+                                        title: "Notes",
+                                        subtitle: "Observations for \(pet.name)",
+                                        systemImage: "doc.text",
+                                        status: .available
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
 
                         Text("Care records are not medical advice. Keep medication and treatment instructions exactly as provided by your veterinarian.")
@@ -46,6 +133,12 @@ struct CareView: View {
                     }
                     .padding(PCSpacing.screenMargin)
                     .padding(.bottom, PCSpacing.huge)
+                } else {
+                    EmptyStateView(
+                        systemImage: "heart.text.square",
+                        message: "Add a pet to start keeping care records for your household."
+                    )
+                    .padding(.top, PCSpacing.xxxl)
                 }
             }
             .background(Color.pc.bg)
@@ -99,9 +192,15 @@ struct CareView: View {
 }
 
 private struct CareDestinationRow: View {
+    enum Status {
+        case available
+        case planned
+    }
+
     let title: String
     let subtitle: String
     let systemImage: String
+    var status: Status = .planned
 
     var body: some View {
         HStack(spacing: PCSpacing.md) {
@@ -118,7 +217,14 @@ private struct CareDestinationRow: View {
                     .foregroundStyle(Color.pc.inkSecondary)
             }
             Spacer()
-            PCChip(text: "Planned", style: .neutral)
+            if status == .planned {
+                PCChip(text: "Planned", style: .neutral)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.pc.inkTertiary)
+                    .accessibilityHidden(true)
+            }
         }
         .padding(PCSpacing.cardPadding)
         .frame(minHeight: PCMetrics.listRowHeight)
@@ -131,6 +237,8 @@ private struct CareDestinationRow: View {
                 .strokeBorder(Color.pc.border, lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(status == .available ? .isButton : [])
+        .accessibilityHint(status == .available ? "Opens \(title)" : "Planned — not available yet")
     }
 }
 

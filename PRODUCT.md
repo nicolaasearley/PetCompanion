@@ -4,9 +4,15 @@
 
 product
 
+## Working title
+
+**Settle** is the current user-facing product name (home screen, in-app copy,
+notifications). The engineering codename and repository name remain
+**PetCompanion**; bundle id, module name, and deep-link scheme are unchanged.
+
 ## Users
 
-PetCompanion is initially for first-time puppy owners, especially couples and
+Settle is initially for first-time puppy owners, especially couples and
 families coordinating care across a shared household. They use it in short,
 frequent moments throughout the day to answer what their puppy needs now, what
 another caregiver has already done, and what is coming next.
@@ -17,7 +23,7 @@ other species are future audiences, not MVP scope.
 
 ## Product Purpose
 
-PetCompanion is the operating system for pet ownership. It turns a puppy's age,
+Settle is the operating system for pet ownership. It turns a puppy's age,
 development stage, household routines, care records, and progress into one
 trustworthy Daily Plan. Success means owners feel guided rather than
 overwhelmed, shared care is unambiguous, and the app remains useful throughout
@@ -35,7 +41,7 @@ clear, restrained, and dependable.
 
 ## Anti-references
 
-PetCompanion must not resemble a cartoon pet game, a dense analytics dashboard,
+Settle must not resemble a cartoon pet game, a dense analytics dashboard,
 an encyclopedia, a generic reminder app, or a social feed. Avoid puppy-themed
 novelty decoration, paw-print wallpaper, rainbow category colors, streak
 pressure, guilt mechanics, unexplained scores, overfilled dashboards,

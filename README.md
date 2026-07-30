@@ -1,6 +1,10 @@
-# PetCompanion
+# Settle
 
-PetCompanion brings personalized guidance and coordination for puppy owners into one calm, time-centric experience. Rather than fragmenting guidance across websites, videos, calendars, and conversations, it consolidates what matters today, what comes next, and how the puppy is progressing. It is an operating system for pet ownership, with the first release purpose-built for new puppy owners in a shared household. This is a private MVP for one founding household.
+**Working product name:** Settle (user-facing). The repository, Xcode target, bundle
+identifier (`com.nic.petcompanion`), and URL scheme (`petcompanion://`) remain
+**PetCompanion** until a deliberate rename pass.
+
+Settle brings personalized guidance and coordination for puppy owners into one calm, time-centric experience. Rather than fragmenting guidance across websites, videos, calendars, and conversations, it consolidates what matters today, what comes next, and how the puppy is progressing. It is an operating system for pet ownership, with the first release purpose-built for new puppy owners in a shared household. This is a private MVP for one founding household.
 
 ## Repository Layout
 

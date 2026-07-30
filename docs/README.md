@@ -1,6 +1,9 @@
-# PetCompanion Documentation
+# Settle documentation
 
-This directory is the source of truth for PetCompanion. Product, design, and
+**Working product name:** Settle (user-facing). Repository and Xcode target names
+remain **PetCompanion**.
+
+This directory is the source of truth for Settle. Product, design, and
 technical decisions should be recorded here before or alongside implementation.
 
 ## Documents

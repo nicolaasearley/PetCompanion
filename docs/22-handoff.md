@@ -15,8 +15,15 @@ passed, and the behaviour was wrong.
 ## 1. What this is
 
 A native SwiftUI iOS app for new puppy owners in a shared household, backed by
-Supabase. The centrepiece is a **Daily Plan**: one deterministic,
-server-generated plan per pet per household-local day.
+Supabase. The **user-facing product name is Settle** (home screen
+`CFBundleDisplayName`, in-app copy, welcome brand mark). The repository,
+Xcode target/scheme/module, bundle id (`com.nic.petcompanion`), deep-link
+scheme (`petcompanion://`), and many internal identifiers remain
+**PetCompanion** deliberately — do not rename those without an explicit
+migration plan (password-recovery allow-list and App Store identity).
+
+The centrepiece is a **Daily Plan**: one deterministic, server-generated plan
+per pet per household-local day.
 
 The product's character is restraint. Maximum three recommendations a day, no
 streaks, no guilt mechanics, no unexplained scores, and a hard veterinary
@@ -24,6 +31,12 @@ boundary — it records and reminds, never diagnoses or doses. Health-adjacent
 content ships deliberately **empty**; those records are always owner- or
 vet-entered. Read `PRODUCT.md` before making product judgements; its
 anti-references are load-bearing, not decoration.
+
+**Multi-pet:** households may contain one or more pets in the data model from
+Slice A (decision log / IA / PRD). MVP UI is single-active-pet first with
+per-pet Daily Plans; a combined multi-pet Home is **out of MVP**. GL-02 pet
+switcher chrome when `pets.count > 1` is specified but not fully shipped —
+Planner may show pet badges; `AppModel.activePet` is still one selection.
 
 ## 2. Where things stand
 
@@ -38,7 +51,24 @@ events), and an append-only attributed history underpin all of it.
 `docs/19-current-build-status.md` is superseded by this section for current
 product status; keep `docs/19` only for the local-run checklist if useful.
 
-### Shipped in the 2026-07-29 session batch (uncommitted landing)
+**Git:** the 2026-07-29 Care/Life/Events/engine/CI landing is on `origin/main`
+(11 commits ending `cbf672d`). Settle branding + new app icon may still be
+local uncommitted work — check `git status` before assuming they are on
+remote.
+
+**Owner testing (2026-07-29) → next revision in flight / landed in working
+tree:** Home undo + offline queue honesty, same-day Needs Attention, Home
+Upcoming care strip, Home density (collapsed Recommended/Coming up, category
+icons), Planner week-nav without scroll thrash + Schedule/Routines filter,
+Life blurb + retained First-year ideas, stronger Socialization passport hero.
+See §2 “Owner-testing revision” below.
+
+**App Store Connect:** Account Holder contracts were blocking iOS app-record
+creation (`STATE_ERROR.APP_CREATE.PLATFORM_NOT_ALLOWED_DUE_TO_CONTRACT_STATE`);
+that contract state is **resolved**. Listing name can be Settle while the
+bundle id stays `com.nic.petcompanion`.
+
+### Shipped in the 2026-07-29 session batch (on `main`)
 
 - **Home visual refresh** — PlanItemCard / section hierarchy polish (needs-
   attention tint + icon; leading accent bar tried and dropped — see
@@ -94,6 +124,47 @@ product status; keep `docs/19` only for the local-run checklist if useful.
 - **Hosted redirect** — `petcompanion://password-reset` on hosted Auth
   `uri_allow_list` (see `docs/21` §5).
 
+### Owner-testing revision (post checklist)
+
+Landed against founding-household notes (Home overwhelm, undo, offline,
+Needs Attention, meds visibility, Planner thrash, Life prompts, passport hero):
+
+- **Home undo** — visible Undo on completed cards + short-lived undo banner
+  (US-033); Completed auto-expands when completion already resections.
+- **Offline** — cache-served plans stay actionable (complete/undo queue);
+  Home/Planner sync line shows `queued(count:)` from `mutationQueue` ahead of
+  stale. Item `.stale` is a sync cue, not a hard disable.
+- **Needs Attention** — engine promotes same-day **required** items after
+  exact time / window end (`packages/engine` fixtures
+  `same-day-required-*-needs-attention`); scheduled routines stay in Today.
+  Bundle `engine.mjs` after engine edits. Full medication **engine**
+  obligations still deferred.
+- **Upcoming care strip** — next medication dues + appointments from Care /
+  Events reads (interim until engine meds obligations).
+- **Home density** — Recommended / Coming up collapsed by default with counts;
+  category SF Symbols; quieter meta; Capacity on Today header.
+- **Planner** — week arrows no longer force agenda `scrollTo`; All/Schedule/
+  Routines filter; Schedule group above Routines within a day.
+- **Life** — always-on purpose blurb; First-year ideas retained (collapsed)
+  after first milestone; create editor has suggestion chips.
+- **Training** — passport hero taller with soft warm wash (not saturated block).
+
+### Settle branding + app icon (2026-07-29, often still uncommitted)
+
+- **Display name** — `INFOPLIST_KEY_CFBundleDisplayName = Settle` (Debug +
+  Release) so the home-screen label is Settle.
+- **In-app copy** — user-visible PetCompanion strings moved to Settle via
+  `PCL10n.Brand.displayName` / `Localizable.xcstrings` (`brand.display_name`)
+  and direct copy updates (settings, auth errors, invitations, disclaimers).
+- **App icon** — source `images/Icon-iOS-Default-1024@1x.png` installed as
+  `Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png`; welcome screen uses
+  `BrandMark.imageset` (derived) instead of the pawprint placeholder.
+- **Docs** — `README.md`, `PRODUCT.md`, `docs/README.md` note Settle as the
+  working user-facing name; internals stay PetCompanion.
+- **Do not change** without an explicit plan: bundle id, `petcompanion://`,
+  Xcode target/module names, on-disk cache path prefixes, launch arg
+  `-PetCompanionBackend`.
+
 ### Not built / still honest gaps
 
 - Life **journal** (P2 / US-094+).
@@ -105,25 +176,36 @@ product status; keep `docs/19` only for the local-run checklist if useful.
 - Events **calendar import/export** and broader calendar UI polish.
 - Planner **PL-04** linked preparation tasks / reschedule from agenda.
 - Engine **medication obligation** rules on the Daily Plan.
+- **GL-02 pet switcher** UI when multiple pets exist (data model already
+  multi-pet; no combined multi-pet Home in MVP).
 - **Professional content review** — all seeded content remains
   `pending_professional_review` (release gate, `PRD §20`).
 - Broader **localization** migration beyond the foundation set.
 - Diagnostics/telemetry; complete accessibility device matrix beyond current
   XCUITest harness coverage.
+- **Owner device testing** — founding-household checklist returned 2026-07-29;
+  functional Care/Auth/Training/Life CRUD largely pass. Revision above addresses
+  Home/Planner/Life/hero notes; retest: undo banner, offline queue line, Needs
+  Attention after a missed required exact time, Upcoming care meds, Home
+  collapsed sections, Planner week scrub + Schedule filter, Life ideas after
+  first milestone, passport hero.
+- **ON-04 real-email recovery smoke** and first **TestFlight** upload after
+  App Store Connect app record exists.
 
 ### Counts at this landing
 
-Migrations in the 2026-07-29 batch include Care weight/providers, medications,
-vaccinations, grooming, notes (+ note media), Life milestones (+ media),
-Events foundation (+ hosted apply / client write lockdown), device tokens /
-notification dispatch, US-086 event candidates, event_prep_vet content, and
-plan Realtime publication. `supabase/tests/run.sh` runs **20** SQL suites
-(including `care`, `medications`, `vaccinations`, `grooming`, `notes`,
-`notes_media`, `events`, `event_notifications`, `life`, `life_media`,
-`device_push`, `plan_realtime`). Engine fixture scenarios expanded for
-cooldown isolation and event_prep_vet. Swift unit tests cover the new Care /
-Life / Events / localization / password-recovery / Realtime / push
-registration surfaces; iOS UI scenario tests updated for Planner and Training.
+The 2026-07-29 batch is **committed and pushed** to `origin/main`. Migrations
+in that batch include Care weight/providers, medications, vaccinations,
+grooming, notes (+ note media), Life milestones (+ media), Events foundation
+(+ hosted apply / client write lockdown), device tokens / notification
+dispatch, US-086 event candidates, event_prep_vet content, and plan Realtime
+publication. `supabase/tests/run.sh` runs **20** SQL suites (including
+`care`, `medications`, `vaccinations`, `grooming`, `notes`, `notes_media`,
+`events`, `event_notifications`, `life`, `life_media`, `device_push`,
+`plan_realtime`). Engine fixture scenarios expanded for cooldown isolation
+and event_prep_vet. Swift unit tests cover the new Care / Life / Events /
+localization / password-recovery / Realtime / push registration surfaces;
+iOS UI scenario tests updated for Planner and Training.
 
 ## 3. Architecture in one page
 
@@ -337,6 +419,11 @@ or APNs *registration*.
   `pending_professional_review`.
 - **ON-04 real-email recovery smoke** (`docs/21` §7) still required before
   TestFlight.
+- **GL-02 pet switcher** — multi-pet data model yes; polished switcher chrome
+  and combined multi-pet Home no (Home is out of MVP by IA).
+- **Settle branding commit** — if `git status` still shows display-name /
+  AppIcon / BrandMark / copy changes, they are not on remote yet; commit
+  before relying on TestFlight builds to show Settle.
 - **Socialization follow-ups:** no XCUITest of the three passport screens;
   no restore/undo command after remove; queued writes do not show as
   optimistic passport rows (appears after offline replay + reload).
@@ -364,6 +451,16 @@ or APNs *registration*.
   attach; document notes also accept PDF ≤10 MB) and Life milestones
   (+ image attach; Life stays image-only).
 - Realtime plan reconciliation foundation; CI; localization foundation.
+- 2026-07-29 landing **pushed to `origin/main`** (no longer an uncommitted
+  tree).
+- App Store Connect **provider contract state** unblocked for iOS app-record
+  creation (was `PLATFORM_NOT_ALLOWED_DUE_TO_CONTRACT_STATE`).
+- **Settle** user-facing name + new AppIcon / welcome BrandMark (internals
+  and `petcompanion://` unchanged) — confirm committed before release builds.
+- Owner-testing Home/Planner/Life/hero revision: inline undo + offline queue
+  sync line; same-day required Needs Attention; Upcoming care strip; Home
+  density; Planner week scrub + Schedule/Routines; Life ideas retained;
+  passport hero presence.
 
 ## 8. Working conventions
 

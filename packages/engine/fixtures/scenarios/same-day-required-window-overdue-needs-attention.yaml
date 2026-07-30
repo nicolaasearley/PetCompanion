@@ -1,0 +1,30 @@
+{
+  "scenario": "same-day required morning window overdue lands in Needs attention",
+  "local_date": "2026-08-08",
+  "now_instant": "2026-08-08T17:00:00Z",
+  "capacity": "normal",
+  "obligations": [
+    {
+      "key": "morning-required",
+      "title": "Morning required care",
+      "category": "health",
+      "obligation_class": "required",
+      "time_policy": "window",
+      "window_ref": "morning"
+    },
+    {
+      "key": "anytime-required",
+      "title": "Anytime required care",
+      "category": "health",
+      "obligation_class": "required",
+      "time_policy": "anytime"
+    }
+  ],
+  "expect": {
+    "sections": {
+      "needs_attention": ["Morning required care"],
+      "today": ["Anytime required care"]
+    },
+    "no_duplicates": true
+  }
+}

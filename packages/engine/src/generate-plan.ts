@@ -937,9 +937,80 @@ function renderTemplate(template: string, values: Record<string, string | number
   );
 }
 
-function obligationItem(occurrence: TaskOccurrenceInput, localDate: LocalDate): PlanItem {
+/** Default window end HH:mm when household has no matching routine_windows row. */
+const DEFAULT_WINDOW_ENDS: Record<Exclude<TimeWindow, "anytime">, string> = {
+  morning: "11:59",
+  midday: "14:59",
+  afternoon: "17:59",
+  evening: "20:59",
+  sleep: "05:59",
+};
+
+/** Local wall-clock `HH:mm` for `now_instant` in the household time zone. */
+function localClockHHMM(nowInstant: string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(nowInstant));
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  // en-GB can still emit "24" for midnight in some engines — normalize.
+  const normalizedHour = hour === "24" ? "00" : hour.padStart(2, "0");
+  return `${normalizedHour}:${minute.padStart(2, "0")}`;
+}
+
+function compareHHMM(left: string, right: string): number {
+  return compareText(left, right);
+}
+
+function windowEndHHMM(
+  windowRef: Exclude<TimeWindow, "anytime">,
+  routineWindows: GenerationContext["household"]["routine_windows"],
+): string {
+  const match = routineWindows.find((window) => window.window_ref === windowRef);
+  return match?.end_time ?? DEFAULT_WINDOW_ENDS[windowRef];
+}
+
+/**
+ * Required + pending items become Needs attention after their due window
+ * (engine §17.2 / US-035). Prior calendar days always qualify; same-day
+ * exact_time / window items qualify once local clock is past due/end.
+ * Anytime required items wait until the next local day. Scheduled (non-
+ * required) items never enter Needs attention (§6.1 uncommon).
+ */
+function isRequiredOverdue(
+  occurrence: TaskOccurrenceInput,
+  context: GenerationContext,
+): boolean {
+  if (occurrence.obligation_class !== "required" || occurrence.state !== "pending") {
+    return false;
+  }
+  if (occurrence.local_due_date < context.local_date) {
+    return true;
+  }
+  if (occurrence.local_due_date > context.local_date) {
+    return false;
+  }
+  const localNow = localClockHHMM(context.now_instant, context.household.time_zone);
+  if (occurrence.time_policy === "exact_time" && occurrence.due_time) {
+    return compareHHMM(localNow, occurrence.due_time) > 0;
+  }
+  if (occurrence.time_policy === "window" && occurrence.window_ref) {
+    const end = windowEndHHMM(occurrence.window_ref, context.household.routine_windows);
+    // sleep windows can wrap past midnight; treat end before start as next-day
+    // boundary already encoded by local_due_date advancement upstream — here
+    // we only compare same-day end times.
+    return compareHHMM(localNow, end) > 0;
+  }
+  return false;
+}
+
+function obligationItem(occurrence: TaskOccurrenceInput, context: GenerationContext): PlanItem {
+  const localDate = context.local_date;
   const completed = occurrence.state === "completed";
-  const overdue = occurrence.local_due_date < localDate && occurrence.obligation_class === "required" && occurrence.state === "pending";
+  const overdue = isRequiredOverdue(occurrence, context);
   const future = occurrence.local_due_date > localDate;
   const section = completed ? "completed" : overdue ? "needs_attention" : future ? "coming_up" : "today";
   const priority: PriorityTier = overdue ? "P0" : future ? "P5" : occurrence.obligation_class === "required" ? "P1" : "P2";
@@ -1102,7 +1173,7 @@ export function generatePlan(context: GenerationContext): PlanResult {
       (occurrence) =>
         occurrence.local_due_date <= context.local_date || upcomingKeys.has(occurrence.occurrence_key),
     )
-    .map((occurrence) => obligationItem(occurrence, context.local_date));
+    .map((occurrence) => obligationItem(occurrence, context));
 
   const representedActivityKeys = new Set(
     context.active_occurrences

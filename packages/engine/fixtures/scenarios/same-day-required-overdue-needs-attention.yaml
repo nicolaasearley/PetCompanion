@@ -1,0 +1,37 @@
+{
+  "scenario": "same-day required exact-time overdue lands in Needs attention",
+  "local_date": "2026-08-08",
+  "now_instant": "2026-08-08T18:00:00Z",
+  "capacity": "normal",
+  "obligations": [
+    {
+      "key": "missed-med",
+      "title": "Morning medication",
+      "category": "health",
+      "obligation_class": "required",
+      "origin": "health_schedule",
+      "due_time": "08:00"
+    },
+    {
+      "key": "later-care",
+      "title": "Evening care",
+      "category": "health",
+      "obligation_class": "required",
+      "due_time": "20:00"
+    },
+    {
+      "key": "scheduled-walk",
+      "title": "Morning walk",
+      "category": "routine",
+      "obligation_class": "scheduled",
+      "due_time": "07:00"
+    }
+  ],
+  "expect": {
+    "sections": {
+      "needs_attention": ["Morning medication"],
+      "today": ["Evening care", "Morning walk"]
+    },
+    "no_duplicates": true
+  }
+}

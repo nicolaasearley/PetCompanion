@@ -606,9 +606,56 @@ function renderTemplate(template, values) {
     (whole, key) => Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : whole
   );
 }
-function obligationItem(occurrence, localDate) {
+var DEFAULT_WINDOW_ENDS = {
+  morning: "11:59",
+  midday: "14:59",
+  afternoon: "17:59",
+  evening: "20:59",
+  sleep: "05:59"
+};
+function localClockHHMM(nowInstant, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(new Date(nowInstant));
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  const normalizedHour = hour === "24" ? "00" : hour.padStart(2, "0");
+  return `${normalizedHour}:${minute.padStart(2, "0")}`;
+}
+function compareHHMM(left, right) {
+  return compareText(left, right);
+}
+function windowEndHHMM(windowRef, routineWindows) {
+  const match = routineWindows.find((window) => window.window_ref === windowRef);
+  return match?.end_time ?? DEFAULT_WINDOW_ENDS[windowRef];
+}
+function isRequiredOverdue(occurrence, context) {
+  if (occurrence.obligation_class !== "required" || occurrence.state !== "pending") {
+    return false;
+  }
+  if (occurrence.local_due_date < context.local_date) {
+    return true;
+  }
+  if (occurrence.local_due_date > context.local_date) {
+    return false;
+  }
+  const localNow = localClockHHMM(context.now_instant, context.household.time_zone);
+  if (occurrence.time_policy === "exact_time" && occurrence.due_time) {
+    return compareHHMM(localNow, occurrence.due_time) > 0;
+  }
+  if (occurrence.time_policy === "window" && occurrence.window_ref) {
+    const end = windowEndHHMM(occurrence.window_ref, context.household.routine_windows);
+    return compareHHMM(localNow, end) > 0;
+  }
+  return false;
+}
+function obligationItem(occurrence, context) {
+  const localDate = context.local_date;
   const completed = occurrence.state === "completed";
-  const overdue = occurrence.local_due_date < localDate && occurrence.obligation_class === "required" && occurrence.state === "pending";
+  const overdue = isRequiredOverdue(occurrence, context);
   const future = occurrence.local_due_date > localDate;
   const section = completed ? "completed" : overdue ? "needs_attention" : future ? "coming_up" : "today";
   const priority = overdue ? "P0" : future ? "P5" : occurrence.obligation_class === "required" ? "P1" : "P2";
@@ -711,7 +758,7 @@ function generatePlan(context) {
   const upcomingKeys = new Set(upcomingOccurrences.map((occurrence) => occurrence.occurrence_key));
   const obligations = eligibleOccurrences.filter(
     (occurrence) => occurrence.local_due_date <= context.local_date || upcomingKeys.has(occurrence.occurrence_key)
-  ).map((occurrence) => obligationItem(occurrence, context.local_date));
+  ).map((occurrence) => obligationItem(occurrence, context));
   const representedActivityKeys = new Set(
     context.active_occurrences.filter((occurrence) => occurrence.state !== "cancelled" && occurrence.state !== "expired").map(occurrenceActivityKey)
   );

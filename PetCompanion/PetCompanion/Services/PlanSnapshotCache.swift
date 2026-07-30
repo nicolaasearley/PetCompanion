@@ -1,8 +1,10 @@
 import Foundation
 
 /// Durable last-known-good plan cache. A transient outage can therefore
-/// show the household's most recent plan in a visibly stale, read-only
-/// state instead of a blank screen.
+/// show the household's most recent plan as visibly stale (`servedFromCacheAt`
+/// + item `displayState == .stale`) instead of a blank screen. Supported
+/// actions (complete / undo) must still queue — staleness is a sync cue, not
+/// a hard read-only lock (US-058 / IA §15.2).
 @MainActor
 final class PlanSnapshotCache {
     private let directory: URL?

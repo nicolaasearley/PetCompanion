@@ -258,7 +258,7 @@ struct SettingsView: View {
     private var reminderFooter: String {
         switch permission {
         case .notDetermined:
-            "PetCompanion asks for notification access only when you enable reminders."
+            "Settle asks for notification access only when you enable reminders."
         case .denied:
             "Notifications are blocked in system settings. Your plan and task history still work normally."
         case .authorized, .provisional:

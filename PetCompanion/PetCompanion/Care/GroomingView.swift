@@ -223,7 +223,7 @@ struct GroomingEditorView: View {
                             )
                             .labelsHidden()
                         }
-                        Text("Leave this off unless you want a date shown. PetCompanion never calculates a grooming due date.")
+                        Text("Leave this off unless you want a date shown. Settle never calculates a grooming due date.")
                             .font(Font.pc.caption)
                             .foregroundStyle(Color.pc.inkTertiary)
                             .fixedSize(horizontal: false, vertical: true)

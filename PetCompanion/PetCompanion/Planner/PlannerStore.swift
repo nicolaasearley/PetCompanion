@@ -7,6 +7,8 @@ final class PlannerStore {
     private let service: any PlannerService
     private let eventService: (any EventService)?
     private let householdId: UUID?
+    /// Shared offline queue for truthful Home/Planner sync lines (US-058).
+    private(set) var mutationQueue: OfflineOperationQueue?
 
     private(set) var context: PlannerContext?
     /// Ordered local-day sections for the forward-scrolling PL-01 agenda.
@@ -19,11 +21,14 @@ final class PlannerStore {
     /// Anchor for the week rail / month jump; the agenda itself scrolls.
     var selectedDate: Date
     /// Ask the agenda `ScrollViewReader` to bring this local day on-screen.
+    /// Set only for intentional day jumps (day chip / month pick), not week arrows.
     var scrollTargetDate: Date?
     var detailItem: PlannerAgendaItem?
     var detailEvent: PlannerAgendaEvent?
     var editorRoute: PlannerEditorRoute?
     var showMonthJump = false
+    /// Schedule-first filter for PL-01 (All / Schedule / Routines).
+    var agendaFilter: PlannerAgendaFilter = .all
     /// Days with tasks and/or confirmed events for the month-jump grid dots.
     /// Seeded from the loaded agenda window and refreshed for the visible month.
     private(set) var monthJumpContentDates: Set<Date> = []
@@ -32,11 +37,13 @@ final class PlannerStore {
         service: any PlannerService,
         eventService: (any EventService)? = nil,
         householdId: UUID? = nil,
+        mutationQueue: OfflineOperationQueue? = nil,
         initialDate: Date = .now
     ) {
         self.service = service
         self.eventService = eventService
         self.householdId = householdId
+        self.mutationQueue = mutationQueue
         selectedDate = initialDate
     }
 
@@ -76,7 +83,7 @@ final class PlannerStore {
 
     func start() async {
         guard context == nil else {
-            await loadWindow(resetting: true)
+            await loadWindow(resetting: true, scrollToSelected: true)
             return
         }
         isLoading = true
@@ -84,7 +91,7 @@ final class PlannerStore {
         do {
             context = try await service.context()
             selectedDate = calendar.startOfDay(for: selectedDate)
-            await loadWindow(resetting: true, keepingLoadingState: true)
+            await loadWindow(resetting: true, keepingLoadingState: true, scrollToSelected: true)
         } catch {
             errorMessage = displayMessage(for: error)
             isLoading = false
@@ -93,9 +100,13 @@ final class PlannerStore {
 
     /// Loads the forward window beginning at `selectedDate` (today after a
     /// jump-to-today). Replaces the in-memory days list.
+    /// - Parameter scrollToSelected: when true, animate the agenda to the
+    ///   window start (selected day). Week arrows leave this false so
+    ///   multi-week scrubbing does not thrash the scroll position.
     func loadWindow(
         resetting: Bool = false,
-        keepingLoadingState: Bool = false
+        keepingLoadingState: Bool = false,
+        scrollToSelected: Bool = false
     ) async {
         guard context != nil else {
             await start()
@@ -117,7 +128,9 @@ final class PlannerStore {
                 ? fetched
                 : PlannerAgendaGrouping.merging(days, with: fetched, calendar: calendar)
             await attachEvents()
-            scrollTargetDate = start
+            if scrollToSelected {
+                scrollTargetDate = start
+            }
         } catch {
             if days.isEmpty {
                 errorMessage = displayMessage(for: error)
@@ -181,16 +194,16 @@ final class PlannerStore {
             scrollTargetDate = existing.date
             return
         }
-        Task { await loadWindow(resetting: true) }
+        Task { await loadWindow(resetting: true, scrollToSelected: true) }
     }
 
     func moveWeek(by value: Int) {
         guard let date = calendar.date(byAdding: .weekOfYear, value: value, to: selectedDate) else {
             return
         }
-        // Week arrows re-anchor the forward window so browsing stays coherent.
+        // Week arrows re-anchor the forward window without forcing agenda scroll.
         selectedDate = calendar.startOfDay(for: date)
-        Task { await loadWindow(resetting: true) }
+        Task { await loadWindow(resetting: true, scrollToSelected: false) }
     }
 
     func moveDay(by value: Int) {
@@ -202,7 +215,7 @@ final class PlannerStore {
 
     func jumpToToday() {
         selectedDate = calendar.startOfDay(for: .now)
-        Task { await loadWindow(resetting: true) }
+        Task { await loadWindow(resetting: true, scrollToSelected: true) }
     }
 
     func consumeScrollTarget() {
@@ -333,7 +346,38 @@ final class PlannerStore {
     }
 
     func entries(for day: PlannerDayAgenda) -> [PlannerAgendaEntry] {
-        PlannerAgendaGrouping.entries(for: day, calendar: calendar)
+        let all = PlannerAgendaGrouping.entries(for: day, calendar: calendar)
+        switch agendaFilter {
+        case .all:
+            // Schedule (events + timed/care) above routines within the day.
+            let schedule = all.filter(Self.isScheduleEntry)
+            let routines = all.filter { !Self.isScheduleEntry($0) }
+            return schedule + routines
+        case .schedule:
+            return all.filter(Self.isScheduleEntry)
+        case .routines:
+            return all.filter { !Self.isScheduleEntry($0) }
+        }
+    }
+
+    /// Events and timed/required/care-like tasks — the appointment-led lane.
+    static func isScheduleEntry(_ entry: PlannerAgendaEntry) -> Bool {
+        switch entry {
+        case .event:
+            return true
+        case .occurrence(let item):
+            if case .exact = item.time { return true }
+            switch item.obligationClass {
+            case .required: return true
+            case .scheduled, .recommended, .informational: break
+            }
+            switch item.origin {
+            case .healthSchedule, .calendarEvent, .systemPreparationRule:
+                return true
+            case .userCreated, .recurringSchedule, .trainingProgram, .developmentRule, .socializationRule:
+                return false
+            }
+        }
     }
 
     /// Reload the currently visible range after a mutation or pull-to-refresh

@@ -57,7 +57,7 @@ struct RootView: View {
             Text("Can't connect")
                 .font(Font.pc.title)
                 .foregroundStyle(Color.pc.ink)
-            Text(model.backendMessage ?? "PetCompanion couldn't reach its service.")
+            Text(model.backendMessage ?? "Settle couldn't reach its service.")
                 .font(Font.pc.body)
                 .foregroundStyle(Color.pc.inkSecondary)
                 .multilineTextAlignment(.center)

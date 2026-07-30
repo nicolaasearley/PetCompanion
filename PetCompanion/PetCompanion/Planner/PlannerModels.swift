@@ -385,6 +385,23 @@ enum PlannerAgendaEntry: Identifiable, Equatable, Sendable {
     }
 }
 
+/// PL-01 schedule-first filter — appointments/timed care vs household routines.
+enum PlannerAgendaFilter: String, CaseIterable, Identifiable, Sendable {
+    case all
+    case schedule
+    case routines
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "All"
+        case .schedule: "Schedule"
+        case .routines: "Routines"
+        }
+    }
+}
+
 struct PlannerDayAgenda: Equatable, Sendable, Identifiable {
     /// How much this agenda is able to say about its day.
     ///
@@ -424,7 +441,7 @@ struct PlannerDayAgenda: Equatable, Sendable, Identifiable {
         guard coverage == .notGenerated, events.isEmpty else { return nil }
         return calendar.startOfDay(for: date) > calendar.startOfDay(for: today)
             ? "This day hasn't been planned yet. Its plan is prepared when the day begins."
-            : "No plan was kept for this day, so PetCompanion can't say what was scheduled."
+            : "No plan was kept for this day, so Settle can't say what was scheduled."
     }
 }
 

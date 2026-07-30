@@ -230,7 +230,7 @@ struct VaccinationEditorView: View {
                             )
                             .labelsHidden()
                         }
-                        Text("Leave this off unless your vet gave an explicit date. PetCompanion never calculates a due date.")
+                        Text("Leave this off unless your vet gave an explicit date. Settle never calculates a due date.")
                             .font(Font.pc.caption)
                             .foregroundStyle(Color.pc.inkTertiary)
                             .fixedSize(horizontal: false, vertical: true)

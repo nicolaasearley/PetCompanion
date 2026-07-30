@@ -89,6 +89,9 @@ final class InfrastructureTests: XCTestCase {
     }
 
     func testPlanCacheReturnsVisiblyStaleSnapshot() {
+        // Cache marks items `.stale` and sets `servedFromCacheAt` so the sync
+        // line can tell the truth. Home/Planner must still allow queueable
+        // complete/undo — staleness is not a hard read-only lock (US-058).
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("PlanSnapshotCacheTests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }

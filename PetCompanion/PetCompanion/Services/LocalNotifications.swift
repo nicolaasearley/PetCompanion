@@ -373,7 +373,7 @@ final class UserNotificationCenterClient: LocalNotificationCenterClient {
 
         for request in requests.prefix(48) {
             let content = UNMutableNotificationContent()
-            content.title = "PetCompanion"
+            content.title = PCL10n.Brand.displayName
             content.body = request.body
             content.sound = .default
             content.userInfo = request.deepLink.notificationUserInfo

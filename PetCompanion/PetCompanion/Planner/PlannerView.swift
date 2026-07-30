@@ -58,7 +58,8 @@ struct PlannerView: View {
             let created = PlannerStore(
                 service: service,
                 eventService: model.events,
-                householdId: model.household?.id
+                householdId: model.household?.id,
+                mutationQueue: model.mutationQueue
             )
             store = created
             await created.start()
@@ -90,7 +91,9 @@ private struct PlannerContentView: View {
                 VStack(alignment: .leading, spacing: PCSpacing.betweenSections) {
                     weekNavigator
 
-                    if store.isStale, let lastVerifiedAt = store.lastVerifiedAt {
+                    if let queue = store.mutationQueue, queue.status.pendingCount > 0 {
+                        SyncStatusLine(status: .queued(count: queue.status.pendingCount))
+                    } else if store.isStale, let lastVerifiedAt = store.lastVerifiedAt {
                         SyncStatusLine(status: .stale(lastSynced: lastVerifiedAt))
                     }
 
@@ -232,6 +235,14 @@ private struct PlannerContentView: View {
                 }
             }
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+
+            Picker("Agenda filter", selection: $store.agendaFilter) {
+                ForEach(PlannerAgendaFilter.allCases) { filter in
+                    Text(filter.title).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Filter agenda between schedule and routines")
         }
     }
 
@@ -322,37 +333,76 @@ private struct PlannerContentView: View {
             } else if !day.hasContent {
                 emptyDay(on: day)
             } else {
-                LazyVStack(spacing: PCSpacing.betweenCards) {
-                    ForEach(store.entries(for: day)) { entry in
-                        switch entry {
-                        case .occurrence(let item):
-                            PlannerAgendaRow(
-                                item: item,
-                                calendar: store.calendar,
-                                showsPetName: store.pets.count > 1,
-                                canToggleCompletion: canToggle(item),
-                                onToggleCompletion: {
-                                    toggleCompletion(item)
-                                },
-                                onOpen: {
-                                    store.detailItem = item
-                                }
-                            )
-                        case .event(let event):
-                            PlannerEventAgendaRow(
-                                event: event,
-                                calendar: store.calendar,
-                                showsPetName: store.pets.count > 1,
-                                onOpen: {
-                                    store.detailEvent = event
-                                }
-                            )
-                        }
-                    }
+                let entries = store.entries(for: day)
+                if entries.isEmpty {
+                    Text(
+                        store.agendaFilter == .schedule
+                            ? "No appointments or timed care this day."
+                            : "No routines this day."
+                    )
+                    .font(Font.pc.secondary)
+                    .foregroundStyle(Color.pc.inkTertiary)
+                    .padding(.vertical, PCSpacing.xs)
+                } else if store.agendaFilter == .all {
+                    dayGroupedEntries(entries)
+                } else {
+                    entryStack(entries)
                 }
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func dayGroupedEntries(_ entries: [PlannerAgendaEntry]) -> some View {
+        let schedule = entries.filter(PlannerStore.isScheduleEntry)
+        let routines = entries.filter { !PlannerStore.isScheduleEntry($0) }
+        VStack(alignment: .leading, spacing: PCSpacing.md) {
+            if !schedule.isEmpty {
+                Text("Schedule")
+                    .font(Font.pc.secondary.weight(.medium))
+                    .foregroundStyle(Color.pc.inkSecondary)
+                entryStack(schedule)
+            }
+            if !routines.isEmpty {
+                Text("Routines")
+                    .font(Font.pc.secondary.weight(.medium))
+                    .foregroundStyle(Color.pc.inkSecondary)
+                    .padding(.top, schedule.isEmpty ? 0 : PCSpacing.xs)
+                entryStack(routines)
+            }
+        }
+    }
+
+    private func entryStack(_ entries: [PlannerAgendaEntry]) -> some View {
+        LazyVStack(spacing: PCSpacing.betweenCards) {
+            ForEach(entries) { entry in
+                switch entry {
+                case .occurrence(let item):
+                    PlannerAgendaRow(
+                        item: item,
+                        calendar: store.calendar,
+                        showsPetName: store.pets.count > 1,
+                        canToggleCompletion: canToggle(item),
+                        onToggleCompletion: {
+                            toggleCompletion(item)
+                        },
+                        onOpen: {
+                            store.detailItem = item
+                        }
+                    )
+                case .event(let event):
+                    PlannerEventAgendaRow(
+                        event: event,
+                        calendar: store.calendar,
+                        showsPetName: store.pets.count > 1,
+                        onOpen: {
+                            store.detailEvent = event
+                        }
+                    )
+                }
+            }
+        }
     }
 
     private func emptyDay(on day: PlannerDayAgenda) -> some View {

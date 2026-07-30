@@ -160,7 +160,7 @@ enum OfflineMutationError: LocalizedError, Equatable {
         case .noActiveAccount:
             "Sign in before saving changes."
         case .queued:
-            "Saved on this device. PetCompanion will try again when the service is available."
+            "Saved on this device. Settle will try again when the service is available."
         case .rejected(_, _, let message):
             message
         }

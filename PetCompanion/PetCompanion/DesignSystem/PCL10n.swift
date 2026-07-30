@@ -11,6 +11,11 @@ import Foundation
 /// do not sprinkle translated literals through Swift. Most of the app is still
 /// English-only until a feature slice is deliberately migrated.
 enum PCL10n {
+    /// User-facing product name (home screen, notifications, in-app copy).
+    enum Brand {
+        static let displayName = String(localized: "brand.display_name")
+    }
+
     enum Tab {
         static let home = String(localized: "tab.home")
         static let planner = String(localized: "tab.planner")

@@ -39,7 +39,7 @@ struct DeepLinkUnavailableView: View {
         case .targetNoLongerInPlan:
             "That reminder's task is no longer on the plan. Nothing was changed."
         case .planUnavailable:
-            "The plan couldn't be loaded, so PetCompanion didn't open that reminder. Your data has not been changed."
+            "The plan couldn't be loaded, so Settle didn't open that reminder. Your data has not been changed."
         case .noAccess:
             "You don't have access to this household anymore."
         }

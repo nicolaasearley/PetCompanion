@@ -22,17 +22,57 @@ final class HomeViewModel {
     /// Items currently playing the completing animation.
     var completingItemIds: Set<UUID> = []
     var completedExpanded = false
+    /// Recommended / Coming up start collapsed so Today stays the first read.
+    var recommendedExpanded = false
+    var comingUpExpanded = false
     var showCapacitySheet = false
     var detailItem: PlanItem?
     var showAddTask = false
     var newTaskTitle = ""
     var isSubmitting = false
+    /// US-033: after a completion, offer a short-lived visible undo on Home.
+    var undoBanner: UndoBanner?
+    /// Interim Care surface until engine medication obligations land.
+    var upcomingCare: [UpcomingCareItem] = []
+    var careDestination: CareDestination?
+
+    struct UndoBanner: Equatable, Identifiable {
+        let id: UUID
+        let title: String
+    }
+
+    struct UpcomingCareItem: Identifiable, Equatable {
+        enum Kind: Equatable {
+            case medication
+            case appointment
+        }
+        let id: UUID
+        let kind: Kind
+        let title: String
+        let subtitle: String
+    }
+
+    enum CareDestination: Identifiable, Equatable {
+        case medications
+        case appointments
+
+        var id: String {
+            switch self {
+            case .medications: "medications"
+            case .appointments: "appointments"
+            }
+        }
+    }
 
     private var memberNames: [UUID: String] = [:]
     private var lastVerifiedAt: Date?
     private var isStale = false
+    private var undoBannerClearTask: Task<Void, Never>?
 
     var syncStatus: SyncStatus {
+        if let pending = model.mutationQueue?.status.pendingCount, pending > 0 {
+            return .queued(count: pending)
+        }
         if isStale {
             return .stale(lastSynced: lastVerifiedAt ?? snapshot?.plan.generatedAt ?? .now)
         }
@@ -91,6 +131,7 @@ final class HomeViewModel {
                 resectioningCompleted: false
             )
             updateVerificationState()
+            await loadUpcomingCare()
         } catch {
             errorMessage = Self.displayMessage(for: error)
         }
@@ -110,11 +151,13 @@ final class HomeViewModel {
             )
             snapshot = refreshed
             updateVerificationState()
+            await loadUpcomingCare()
         } catch {
             errorMessage = Self.displayMessage(for: error)
             if snapshot != nil {
                 isStale = true
             }
+            await loadUpcomingCare()
         }
     }
 
@@ -148,6 +191,60 @@ final class HomeViewModel {
         }
     }
 
+    /// Next medication dues + next confirmed appointment — Care/Events reads,
+    /// not engine obligations (handoff: medication plan rules still deferred).
+    private func loadUpcomingCare() async {
+        var items: [UpcomingCareItem] = []
+        let calendar = clock.calendar
+        let today = calendar.startOfDay(for: Date())
+
+        if let pet, let care = model.care,
+           let schedules = try? await care.loadMedicationSchedules(petId: pet.id) {
+            let upcoming = schedules
+                .compactMap { schedule -> UpcomingCareItem? in
+                    guard schedule.status == .active, let next = schedule.nextDue else { return nil }
+                    return UpcomingCareItem(
+                        id: next.occurrenceId,
+                        kind: .medication,
+                        title: schedule.medicationName,
+                        subtitle: next.dueSummary(relativeTo: today, calendar: calendar)
+                    )
+                }
+                .sorted { $0.subtitle < $1.subtitle }
+                .prefix(2)
+            items.append(contentsOf: upcoming)
+        }
+
+        if let household = model.household, let events = model.events,
+           let loaded = try? await events.loadEvents(householdId: household.id) {
+            let next = loaded
+                .filter { !$0.isCancelled && calendar.startOfDay(for: $0.startDate) >= today }
+                .sorted {
+                    if $0.startDate != $1.startDate { return $0.startDate < $1.startDate }
+                    return ($0.startTime ?? "") < ($1.startTime ?? "")
+                }
+                .prefix(2)
+                .map {
+                    UpcomingCareItem(
+                        id: $0.id,
+                        kind: .appointment,
+                        title: $0.title,
+                        subtitle: $0.whenSummary
+                    )
+                }
+            items.append(contentsOf: next)
+        }
+
+        upcomingCare = Array(items.prefix(3))
+    }
+
+    func openUpcomingCare(_ item: UpcomingCareItem) {
+        switch item.kind {
+        case .medication: careDestination = .medications
+        case .appointment: careDestination = .appointments
+        }
+    }
+
     // MARK: - Complete / undo
 
     func toggleCompletion(of item: PlanItem) {
@@ -172,7 +269,13 @@ final class HomeViewModel {
             do {
                 snapshot = try await model.plans.completeItem(itemId: item.id, petId: pet.id, on: Date())
                 updateVerificationState()
-                AccessibilityNotification.Announcement("\(item.title) completed").post()
+                presentUndoBanner(for: item)
+                // If a natural list update already moved this into Completed,
+                // expand so undo stays one tap away.
+                if snapshot?.items.contains(where: { $0.id == item.id && $0.section == .completed }) == true {
+                    completedExpanded = true
+                }
+                AccessibilityNotification.Announcement("\(item.title) completed. Undo available.").post()
             } catch {
                 errorMessage = Self.displayMessage(for: error)
             }
@@ -186,11 +289,45 @@ final class HomeViewModel {
             do {
                 snapshot = try await model.plans.undoCompletion(itemId: item.id, petId: pet.id, on: Date())
                 updateVerificationState()
+                clearUndoBanner(matching: item.id)
                 AccessibilityNotification.Announcement("\(item.title) completion undone").post()
             } catch {
                 errorMessage = Self.displayMessage(for: error)
             }
         }
+    }
+
+    func undoFromBanner() {
+        guard let banner = undoBanner,
+              let item = snapshot?.items.first(where: { $0.id == banner.id })
+        else {
+            clearUndoBanner()
+            return
+        }
+        undo(item)
+    }
+
+    func dismissUndoBanner() {
+        clearUndoBanner()
+    }
+
+    private func presentUndoBanner(for item: PlanItem) {
+        undoBannerClearTask?.cancel()
+        undoBanner = UndoBanner(id: item.id, title: item.title)
+        undoBannerClearTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled else { return }
+            if undoBanner?.id == item.id {
+                undoBanner = nil
+            }
+        }
+    }
+
+    private func clearUndoBanner(matching id: UUID? = nil) {
+        if let id, undoBanner?.id != id { return }
+        undoBannerClearTask?.cancel()
+        undoBannerClearTask = nil
+        undoBanner = nil
     }
 
     // MARK: - Capacity (HM-04)
@@ -259,9 +396,9 @@ final class HomeViewModel {
     // MARK: - Display helpers
 
     func cardState(for item: PlanItem) -> PlanItemCard.CardState {
-        if item.displayState == .stale {
-            return .disabled
-        }
+        // Cache-served items are marked `.stale` for sync honesty, but
+        // complete/undo must still queue (US-058). Never map that cue to
+        // `.disabled` for actionable plan rows.
         if completingItemIds.contains(item.id) {
             return .completing
         }
@@ -270,8 +407,7 @@ final class HomeViewModel {
         }
         switch item.displayState {
         case .queued: return .queued
-        case .stale: return .disabled
-        case .normal: return .normal
+        case .stale, .normal: return .normal
         }
     }
 
@@ -292,10 +428,8 @@ final class HomeViewModel {
         }
         switch item.section {
         case .recommended:
-            if let effort = item.effortBand {
-                return "\(item.category.displayName) · \(effort.displayText)"
-            }
-            return item.category.displayName
+            // Category lives in the leading glyph; keep meta to effort only.
+            return item.effortBand?.displayText
         case .comingUp:
             guard let occurrence = snapshot.occurrence(for: item) else { return nil }
             let day = Self.upcomingDayText(occurrence.localDueDate, calendar: clock.calendar)
@@ -307,7 +441,7 @@ final class HomeViewModel {
             }
             return day
         case .needsAttention:
-            return item.category.displayName
+            return nil
         case .today, .completed:
             return nil
         }
@@ -346,7 +480,7 @@ final class HomeViewModel {
     private static func displayMessage(for error: Error) -> String {
         let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         return message.isEmpty
-            ? "PetCompanion couldn't update the household right now. Please try again."
+            ? "Settle couldn't update the household right now. Please try again."
             : message
     }
 

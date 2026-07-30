@@ -12,6 +12,7 @@ struct LifeView: View {
     @State private var pendingRemovePhoto: MilestoneMedia?
     @State private var promptTitle: String?
     @State private var viewerMedia: MilestoneMedia?
+    @State private var ideasExpanded = false
 
     var body: some View {
         NavigationStack {
@@ -120,32 +121,41 @@ struct LifeView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, PCSpacing.xxxl)
                         .accessibilityLabel("Loading milestones")
-                } else if store.milestones.isEmpty {
-                    EmptyStateView(
-                        systemImage: "heart.text.square",
-                        message: "\(store.petName)'s story starts with the moments that matter — first day home, a first walk, everyday joys.",
-                        primaryActionTitle: "Add a milestone",
-                        primaryAction: {
-                            promptTitle = nil
-                            editor = .create
-                        }
-                    )
-                    promptsSection(store: store)
                 } else {
-                    ForEach(store.timelineSections) { section in
-                        VStack(alignment: .leading, spacing: PCSpacing.md) {
-                            SectionHeader(title: section.title)
-                            ForEach(section.milestones) { milestone in
-                                MilestoneCard(
-                                    milestone: milestone,
-                                    store: store,
-                                    onEdit: { editor = .edit(milestone) },
-                                    onRemove: { pendingRemove = milestone },
-                                    onViewPhoto: { viewerMedia = $0 },
-                                    onRemovePhoto: { pendingRemovePhoto = $0 }
-                                )
+                    lifePurposeBlurb(petName: store.petName)
+
+                    if store.milestones.isEmpty {
+                        EmptyStateView(
+                            systemImage: "heart.text.square",
+                            message: "Start with a moment that matters — first day home, a first walk, or an everyday joy.",
+                            primaryActionTitle: "Add a milestone",
+                            primaryAction: {
+                                promptTitle = nil
+                                editor = .create
+                            }
+                        )
+                        promptsSection(store: store, usedTitles: [], collapsed: false)
+                    } else {
+                        ForEach(store.timelineSections) { section in
+                            VStack(alignment: .leading, spacing: PCSpacing.md) {
+                                SectionHeader(title: section.title)
+                                ForEach(section.milestones) { milestone in
+                                    MilestoneCard(
+                                        milestone: milestone,
+                                        store: store,
+                                        onEdit: { editor = .edit(milestone) },
+                                        onRemove: { pendingRemove = milestone },
+                                        onViewPhoto: { viewerMedia = $0 },
+                                        onRemovePhoto: { pendingRemovePhoto = $0 }
+                                    )
+                                }
                             }
                         }
+                        promptsSection(
+                            store: store,
+                            usedTitles: Set(store.milestones.map(\.title)),
+                            collapsed: true
+                        )
                     }
                 }
             }
@@ -155,45 +165,77 @@ struct LifeView: View {
         .refreshable { await store.load() }
     }
 
-    private func promptsSection(store: LifeStore) -> some View {
-        VStack(alignment: .leading, spacing: PCSpacing.md) {
-            SectionHeader(title: "First-year moments")
-            Text("Suggestions only — nothing is recorded until you save.")
-                .font(Font.pc.caption)
-                .foregroundStyle(Color.pc.inkTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-            ForEach(LifeMomentPrompt.firstYear) { prompt in
-                Button {
-                    promptTitle = prompt.title
-                    editor = .create
-                } label: {
-                    HStack(spacing: PCSpacing.md) {
-                        Image(systemName: prompt.icon)
-                            .foregroundStyle(Color.pc.accent)
-                            .frame(width: 28)
-                            .accessibilityHidden(true)
-                        Text(prompt.title)
-                            .font(Font.pc.body)
-                            .foregroundStyle(Color.pc.ink)
-                        Spacer()
-                        Image(systemName: "plus.circle")
+    private func lifePurposeBlurb(petName: String) -> some View {
+        Text("\(petName)'s story collects the moments that matter — firsts, everyday joys, and the days you want to remember together.")
+            .font(Font.pc.secondary)
+            .foregroundStyle(Color.pc.inkSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func promptsSection(
+        store: LifeStore,
+        usedTitles: Set<String>,
+        collapsed: Bool
+    ) -> some View {
+        let prompts = LifeMomentPrompt.firstYear.filter { !usedTitles.contains($0.title) }
+        return Group {
+            if !prompts.isEmpty {
+                VStack(alignment: .leading, spacing: PCSpacing.md) {
+                    if collapsed {
+                        SectionHeader(
+                            title: "First-year ideas",
+                            trailingLabel: ideasExpanded ? "Hide" : "Show",
+                            trailingAction: { ideasExpanded.toggle() }
+                        )
+                        if ideasExpanded {
+                            promptList(prompts, store: store)
+                        }
+                    } else {
+                        SectionHeader(title: "First-year moments")
+                        Text("Suggestions only — nothing is recorded until you save.")
+                            .font(Font.pc.caption)
                             .foregroundStyle(Color.pc.inkTertiary)
-                            .accessibilityHidden(true)
+                            .fixedSize(horizontal: false, vertical: true)
+                        promptList(prompts, store: store)
                     }
-                    .padding(PCSpacing.cardPadding)
-                    .background(
-                        RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
-                            .fill(Color.pc.surface)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
-                            .strokeBorder(Color.pc.border, lineWidth: 1)
-                    )
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Add milestone: \(prompt.title)")
-                .disabled(store.isSaving)
             }
+        }
+    }
+
+    private func promptList(_ prompts: [LifeMomentPrompt], store: LifeStore) -> some View {
+        ForEach(prompts) { prompt in
+            Button {
+                promptTitle = prompt.title
+                editor = .create
+            } label: {
+                HStack(spacing: PCSpacing.md) {
+                    Image(systemName: prompt.icon)
+                        .foregroundStyle(Color.pc.accent)
+                        .frame(width: 28)
+                        .accessibilityHidden(true)
+                    Text(prompt.title)
+                        .font(Font.pc.body)
+                        .foregroundStyle(Color.pc.ink)
+                    Spacer()
+                    Image(systemName: "plus.circle")
+                        .foregroundStyle(Color.pc.inkTertiary)
+                        .accessibilityHidden(true)
+                }
+                .padding(PCSpacing.cardPadding)
+                .background(
+                    RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
+                        .fill(Color.pc.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
+                        .strokeBorder(Color.pc.border, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add milestone: \(prompt.title)")
+            .disabled(store.isSaving)
         }
     }
 }
@@ -390,6 +432,41 @@ struct MilestoneEditorView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: PCSpacing.betweenSections) {
+                    if editing == nil {
+                        VStack(alignment: .leading, spacing: PCSpacing.sm) {
+                            Text("Suggested moments")
+                                .font(Font.pc.secondary.weight(.medium))
+                                .foregroundStyle(Color.pc.inkSecondary)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: PCSpacing.sm) {
+                                    ForEach(LifeMomentPrompt.firstYear) { prompt in
+                                        Button {
+                                            title = prompt.title
+                                        } label: {
+                                            Label(prompt.title, systemImage: prompt.icon)
+                                                .font(Font.pc.caption.weight(.semibold))
+                                                .foregroundStyle(
+                                                    title == prompt.title ? Color.pc.onPrimary : Color.pc.ink
+                                                )
+                                                .padding(.horizontal, PCSpacing.md)
+                                                .padding(.vertical, PCSpacing.sm)
+                                                .background(
+                                                    Capsule(style: .continuous)
+                                                        .fill(
+                                                            title == prompt.title
+                                                                ? Color.pc.primary
+                                                                : Color.pc.surfaceSubtle
+                                                        )
+                                                )
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Use suggestion \(prompt.title)")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     PCLabeledField(label: "Title") {
                         TextField("What happened?", text: $title)
                     }

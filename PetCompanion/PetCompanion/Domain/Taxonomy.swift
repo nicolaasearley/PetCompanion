@@ -23,6 +23,22 @@ enum PlanItemCategory: String, Codable, CaseIterable, Sendable {
         case .household: "Household"
         }
     }
+
+    /// Quiet category glyph for plan cards (Home density pass).
+    var systemImage: String {
+        switch self {
+        case .health: "heart"
+        case .feeding: "fork.knife"
+        case .routine: "sun.and.horizon"
+        case .training: "figure.walk"
+        case .socialization: "person.2"
+        case .grooming: "comb"
+        case .event: "calendar"
+        case .preparation: "checklist"
+        case .life: "heart.text.square"
+        case .household: "house"
+        }
+    }
 }
 
 /// Obligation classes — engine §8.2. Conveyed to users by section, label,

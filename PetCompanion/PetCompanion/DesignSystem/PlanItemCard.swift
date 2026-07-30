@@ -33,13 +33,19 @@ struct PlanItemCard: View {
     /// two cues (tint + icon) is enough weight for a calm interface; a third
     /// stripe was redundant emphasis (doc 09 §7.1).
     var isNeedsAttention: Bool = false
+    /// Optional quiet category glyph (Home density). Hidden when needs-attention
+    /// already shows its own leading icon.
+    var categorySystemImage: String? = nil
     /// Recommendation cards never show a checkbox pre-accepted; their
     /// primary tap opens the explanation. Accepting is explicit.
     var showsCheckbox: Bool = true
-    /// e.g. "Why this?" or "Open" — rendered with a trailing chevron.
+    /// e.g. "Why this?" or "Undo" — rendered with a trailing chevron.
     var trailingAffordance: String? = nil
     var onToggleComplete: (() -> Void)? = nil
     var onOpen: (() -> Void)? = nil
+    /// When set, the trailing affordance is its own control (e.g. Undo)
+    /// instead of living inside the open-details hit target.
+    var onTrailingAction: (() -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -58,6 +64,19 @@ struct PlanItemCard: View {
                 checkbox
             }
             rowContent
+            if let trailingAffordance, let onTrailingAction {
+                Button(action: onTrailingAction) {
+                    Text(trailingAffordance)
+                        .font(Font.pc.secondary.weight(.semibold))
+                        .foregroundStyle(Color.pc.primary)
+                        .frame(minHeight: PCMetrics.minTouchTarget)
+                        .padding(.horizontal, PCSpacing.sm)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isDisabled)
+                .accessibilityLabel("\(trailingAffordance) \(title)")
+            }
         }
         .padding(PCSpacing.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -146,6 +165,12 @@ struct PlanItemCard: View {
                 HStack(spacing: PCSpacing.sm) {
                     if isNeedsAttention {
                         attentionIcon
+                    } else if let categorySystemImage {
+                        Image(systemName: categorySystemImage)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.pc.inkTertiary)
+                            .frame(width: 18)
+                            .accessibilityHidden(true)
                     }
                     Text(title)
                         .font(Font.pc.body)
@@ -161,7 +186,7 @@ struct PlanItemCard: View {
                 if state == .queued {
                     PCChip(text: "queued", icon: "arrow.triangle.2.circlepath", style: .info)
                 }
-                if let trailingAffordance {
+                if let trailingAffordance, onTrailingAction == nil {
                     Text("\(trailingAffordance) ›")
                         .font(Font.pc.secondary)
                         .foregroundStyle(Color.pc.primary)

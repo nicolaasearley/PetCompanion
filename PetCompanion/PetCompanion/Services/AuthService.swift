@@ -62,7 +62,7 @@ enum AuthError: LocalizedError, Equatable {
         case .invalidRecoveryLink:
             "This password reset link is invalid or has expired. Request a new one to continue."
         case .recoveryRequiresSignOut:
-            "You’re already signed in. Return to PetCompanion and sign out before using a password reset link."
+            "You're already signed in. Return to Settle and sign out before using a password reset link."
         case .passwordUpdateFailed:
             "We couldn't update your password. Check your connection and try again."
         }

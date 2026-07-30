@@ -226,8 +226,10 @@ final class PlanServicePlannerAdapter: PlannerService {
         calendar: Calendar
     ) -> PlannerAgendaItem {
         let state: PlannerAgendaState
-        if planItem.displayState == .stale || snapshot.servedFromCacheAt != nil {
-            state = .stale
+        // Cache-served plans stay interactive so complete/undo can queue
+        // (US-058). Day-level `isStale` still drives the sync line.
+        if planItem.displayState == .queued {
+            state = .queued
         } else {
             state = switch occurrence.state {
             case .pending, .rescheduled: .pending

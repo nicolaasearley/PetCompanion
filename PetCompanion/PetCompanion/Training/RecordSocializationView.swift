@@ -158,7 +158,7 @@ struct RecordSocializationView: View {
                 )
                 .accessibilityElement(children: .combine)
             }
-            Text("Your own observation. PetCompanion doesn't interpret it or grade it.")
+            Text("Your own observation. Settle doesn't interpret it or grade it.")
                 .font(Font.pc.caption)
                 .foregroundStyle(Color.pc.inkTertiary)
                 .fixedSize(horizontal: false, vertical: true)

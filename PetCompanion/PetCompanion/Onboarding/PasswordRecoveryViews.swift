@@ -32,7 +32,7 @@ struct RequestPasswordResetView: View {
                 .foregroundStyle(Color.pc.ink)
                 .accessibilityAddTraits(.isHeader)
 
-            Text("Enter the email you use for PetCompanion. We’ll send instructions if an account matches it.")
+            Text("Enter the email you use for Settle. We'll send instructions if an account matches it.")
                 .font(Font.pc.body)
                 .foregroundStyle(Color.pc.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -244,12 +244,12 @@ struct SetNewPasswordView: View {
                 .font(Font.pc.title)
                 .foregroundStyle(Color.pc.ink)
                 .accessibilityAddTraits(.isHeader)
-            Text("Return to PetCompanion, then sign out before opening a password reset link. Your current account has not been changed.")
+            Text("Return to Settle, then sign out before opening a password reset link. Your current account has not been changed.")
                 .font(Font.pc.body)
                 .foregroundStyle(Color.pc.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             PrimaryButton(
-                title: "Return to PetCompanion",
+                title: "Return to Settle",
                 action: { Task { await model.dismissPasswordRecovery() } }
             )
         }

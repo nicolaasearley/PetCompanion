@@ -18,17 +18,13 @@ struct WelcomeView: View {
                     Spacer(minLength: PCSpacing.xxxl)
 
                     if showsBrandMark {
-                        // Brand-mark placeholder; no announced role.
-                        ZStack {
-                            Circle()
-                                .fill(Color.pc.surfaceSubtle)
-                                .frame(width: 96, height: 96)
-                            Image(systemName: "pawprint")
-                                .font(.system(.largeTitle, weight: .light))
-                                .foregroundStyle(Color.pc.primary)
-                        }
-                        .accessibilityHidden(true)
-                        .padding(.bottom, PCSpacing.xxxl)
+                        Image("BrandMark")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 96, height: 96)
+                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .accessibilityHidden(true)
+                            .padding(.bottom, PCSpacing.xxxl)
                     }
 
                     Text("Raising a puppy,\none day at a time.")

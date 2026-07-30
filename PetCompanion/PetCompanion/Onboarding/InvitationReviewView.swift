@@ -241,7 +241,7 @@ struct InvitationReviewView: View {
         case .householdClosed:
             "The owner closed this household, so invitations to it no longer work."
         case .otherHousehold:
-            "PetCompanion supports one household per account in this release. Leaving a household isn't available yet, so use a different account for this invitation."
+            "Settle supports one household per account in this release. Leaving a household isn't available yet, so use a different account for this invitation."
         case .notFound:
             "That link doesn't match an invitation. Check you pasted all of it, or ask for a new one."
         }

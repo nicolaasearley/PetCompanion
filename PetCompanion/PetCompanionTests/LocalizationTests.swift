@@ -4,6 +4,10 @@ import XCTest
 /// Guards the localization foundation: catalog keys must resolve to the English
 /// source strings bundled with the app (default locale).
 final class LocalizationTests: XCTestCase {
+    func testBrandDisplayNameResolvesFromStringCatalog() {
+        XCTAssertEqual(PCL10n.Brand.displayName, "Settle")
+    }
+
     func testTabLabelsResolveFromStringCatalog() {
         XCTAssertEqual(PCL10n.Tab.home, "Home")
         XCTAssertEqual(PCL10n.Tab.planner, "Planner")

@@ -114,7 +114,7 @@ final class PlanDayScopeTests: XCTestCase {
         )
         XCTAssertEqual(
             past.unplannedDayMessage(today: today, calendar: calendar),
-            "No plan was kept for this day, so PetCompanion can't say what was scheduled."
+            "No plan was kept for this day, so Settle can't say what was scheduled."
         )
     }
 

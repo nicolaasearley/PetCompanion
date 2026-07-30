@@ -196,7 +196,7 @@ enum InvitationError: LocalizedError, Equatable {
         case .householdClosed:
             "This household has been closed."
         case .otherHousehold:
-            "PetCompanion supports one household per account in this release."
+            "Settle supports one household per account in this release."
         case .notAllowed:
             "Only the household owner can do this."
         case .offline:

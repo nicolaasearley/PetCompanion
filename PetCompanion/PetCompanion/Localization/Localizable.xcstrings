@@ -43,6 +43,19 @@
     "%@ ›" : {
 
     },
+    "%@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "%@ completed" : {
+
+    },
     "%@ window, %@" : {
       "localizations" : {
         "en" : {
@@ -94,6 +107,9 @@
       }
     },
     "%@. Confirm you still want to record another dose." : {
+
+    },
+    "%@'s story collects the moments that matter — firsts, everyday joys, and the days you want to remember together." : {
 
     },
     "%lld" : {
@@ -205,6 +221,9 @@
     "Address" : {
 
     },
+    "Agenda filter" : {
+
+    },
     "All day" : {
 
     },
@@ -227,6 +246,9 @@
 
     },
     "Appointments & events" : {
+
+    },
+    "Appointments aren't available right now." : {
 
     },
     "Archive" : {
@@ -270,6 +292,18 @@
     },
     "Birth date" : {
 
+    },
+    "brand.display_name" : {
+      "comment" : "User-facing product name shown on the home screen, in notifications, and in branded copy.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settle"
+          }
+        }
+      }
     },
     "Call %@" : {
 
@@ -478,7 +512,7 @@
     "Enter it again" : {
 
     },
-    "Enter the email you use for PetCompanion. We’ll send instructions if an account matches it." : {
+    "Enter the email you use for Settle. We'll send instructions if an account matches it." : {
 
     },
     "Entered as %@" : {
@@ -515,6 +549,9 @@
 
     },
     "Filled dots mark days with tasks or events" : {
+
+    },
+    "Filter agenda between schedule and routines" : {
 
     },
     "First / next due date" : {
@@ -720,10 +757,10 @@
     "Kind" : {
 
     },
-    "Leave this off unless you want a date shown. PetCompanion never calculates a grooming due date." : {
+    "Leave this off unless you want a date shown. Settle never calculates a grooming due date." : {
 
     },
-    "Leave this off unless your vet gave an explicit date. PetCompanion never calculates a due date." : {
+    "Leave this off unless your vet gave an explicit date. Settle never calculates a due date." : {
 
     },
     "Life" : {
@@ -819,6 +856,9 @@
     "Medications are record-keeping, not medical advice. Never double, skip, or change a dose based on this app." : {
 
     },
+    "Medications aren't available right now." : {
+
+    },
     "Members" : {
 
     },
@@ -873,10 +913,16 @@
     "Next week" : {
 
     },
+    "No appointments or timed care this day." : {
+
+    },
     "No changes recorded yet." : {
 
     },
     "No invitations yet." : {
+
+    },
+    "No routines this day." : {
 
     },
     "No sessions logged yet." : {
@@ -1192,7 +1238,7 @@
     "Retire this goal?" : {
 
     },
-    "Return to PetCompanion, then sign out before opening a password reset link. Your current account has not been changed." : {
+    "Return to Settle, then sign out before opening a password reset link. Your current account has not been changed." : {
 
     },
     "Revoke" : {
@@ -1202,6 +1248,9 @@
 
     },
     "Revoke this invitation" : {
+
+    },
+    "Routines" : {
 
     },
     "Save" : {
@@ -1337,6 +1386,9 @@
 
     },
     "Suggest this again" : {
+
+    },
+    "Suggested moments" : {
 
     },
     "Suggestions only — nothing is recorded until you save." : {
@@ -1510,6 +1562,12 @@
     "Type" : {
 
     },
+    "Undo" : {
+
+    },
+    "Undo %@" : {
+
+    },
     "Undo completion for %@" : {
 
     },
@@ -1523,6 +1581,9 @@
 
     },
     "Use at least %lld characters." : {
+
+    },
+    "Use suggestion %@" : {
 
     },
     "Vaccination history is record-keeping, not a schedule or medical advice. Leave next due blank unless your vet gave a date." : {
@@ -1612,7 +1673,7 @@
     "Your new password is ready. Sign in to continue." : {
 
     },
-    "Your own observation. PetCompanion doesn't interpret it or grade it." : {
+    "Your own observation. Settle doesn't interpret it or grade it." : {
 
     }
   },

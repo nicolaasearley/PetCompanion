@@ -224,8 +224,8 @@ final class AppModel {
         backendMode = .resolving
         guard await SupabaseClientProvider.isReachable(config: config) else {
             backendMessage = resolvedMode == .local
-                ? "The local PetCompanion service is not running. Start Supabase in the project folder, then retry."
-                : "PetCompanion couldn't reach its service. Check your connection, then retry."
+                ? "The local Settle service is not running. Start Supabase in the project folder, then retry."
+                : "Settle couldn't reach its service. Check your connection, then retry."
             backendMode = .unavailable
             return
         }

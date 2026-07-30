@@ -42,6 +42,7 @@ struct HomeView: View {
 }
 
 private struct HomeContentView: View {
+    @Environment(AppModel.self) private var model
     @Bindable var viewModel: HomeViewModel
     @State private var showSettings = false
 
@@ -53,6 +54,12 @@ private struct HomeContentView: View {
                 if let snapshot = viewModel.snapshot {
                     if let errorMessage = viewModel.errorMessage {
                         errorBanner(errorMessage)
+                    }
+                    if let undoBanner = viewModel.undoBanner {
+                        undoBannerView(undoBanner)
+                    }
+                    if !viewModel.upcomingCare.isEmpty {
+                        upcomingCareSection
                     }
                     if snapshot.isEmpty {
                         allCaughtUp
@@ -96,6 +103,27 @@ private struct HomeContentView: View {
                     : nil,
                 onToggleComplete: { viewModel.toggleCompletion(of: item) }
             )
+        }
+        .sheet(item: $viewModel.careDestination) { destination in
+            NavigationStack {
+                switch destination {
+                case .medications:
+                    if let store = model.makeMedicationsStore() {
+                        MedicationsView(store: store)
+                    } else {
+                        Text("Medications aren't available right now.")
+                            .padding()
+                    }
+                case .appointments:
+                    if let store = model.makeEventStore() {
+                        EventsView(store: store)
+                    } else {
+                        Text("Appointments aren't available right now.")
+                            .padding()
+                    }
+                }
+            }
+            .environment(model)
         }
         .alert("Add a task", isPresented: $viewModel.showAddTask) {
             TextField("What needs doing?", text: $viewModel.newTaskTitle)
@@ -187,11 +215,22 @@ private struct HomeContentView: View {
             switch group.section {
             case .recommended:
                 SectionHeader(
-                    title: group.section.title,
-                    trailingLabel: "Adjust",
-                    trailingAction: { viewModel.showCapacitySheet = true }
+                    title: "\(group.section.title) (\(group.items.count))",
+                    trailingLabel: viewModel.recommendedExpanded ? "Hide" : "Show",
+                    trailingAction: { viewModel.recommendedExpanded.toggle() }
                 )
-                sectionCards(group.items)
+                if viewModel.recommendedExpanded {
+                    sectionCards(group.items)
+                }
+            case .comingUp:
+                SectionHeader(
+                    title: "\(group.section.title) (\(group.items.count))",
+                    trailingLabel: viewModel.comingUpExpanded ? "Hide" : "Show",
+                    trailingAction: { viewModel.comingUpExpanded.toggle() }
+                )
+                if viewModel.comingUpExpanded {
+                    sectionCards(group.items)
+                }
             case .completed:
                 SectionHeader(
                     title: "\(group.section.title) (\(group.items.count))",
@@ -208,7 +247,11 @@ private struct HomeContentView: View {
                 SectionHeader(title: group.section.title, tone: .attention)
                 sectionCards(group.items)
             case .today:
-                SectionHeader(title: group.section.title)
+                SectionHeader(
+                    title: group.section.title,
+                    trailingLabel: "Capacity",
+                    trailingAction: { viewModel.showCapacitySheet = true }
+                )
                 ForEach(viewModel.windowGroups(for: group.items), id: \.window) { windowGroup in
                     if let window = windowGroup.window {
                         Text(window.displayName)
@@ -218,9 +261,6 @@ private struct HomeContentView: View {
                     }
                     sectionCards(windowGroup.items)
                 }
-            default:
-                SectionHeader(title: group.section.title)
-                sectionCards(group.items)
             }
         }
     }
@@ -240,17 +280,71 @@ private struct HomeContentView: View {
         let showsCheckbox = item.kind != .upcomingPreview
             && item.kind != .informational
             && !isUnacceptedRecommendation
+        let isCompleted = viewModel.snapshot?.isCompleted(item) == true
+        let trailing: String? = {
+            if isUnacceptedRecommendation { return "Why this?" }
+            if isCompleted { return "Undo" }
+            return nil
+        }()
 
         return PlanItemCard(
             title: item.title,
             meta: viewModel.meta(for: item),
             state: viewModel.cardState(for: item),
             isNeedsAttention: item.section == .needsAttention,
+            categorySystemImage: item.category.systemImage,
             showsCheckbox: showsCheckbox,
-            trailingAffordance: isUnacceptedRecommendation ? "Why this?" : nil,
+            trailingAffordance: trailing,
             onToggleComplete: showsCheckbox ? { viewModel.toggleCompletion(of: item) } : nil,
-            onOpen: { viewModel.detailItem = item }
+            onOpen: { viewModel.detailItem = item },
+            onTrailingAction: isCompleted ? { viewModel.toggleCompletion(of: item) } : nil
         )
+    }
+
+    private var upcomingCareSection: some View {
+        VStack(alignment: .leading, spacing: PCSpacing.betweenCards) {
+            HStack {
+                SectionHeader(title: "Upcoming care")
+                Spacer(minLength: 0)
+            }
+            ForEach(viewModel.upcomingCare) { item in
+                Button {
+                    viewModel.openUpcomingCare(item)
+                } label: {
+                    HStack(spacing: PCSpacing.md) {
+                        Image(systemName: item.kind == .medication ? "pills" : "calendar")
+                            .foregroundStyle(Color.pc.primary)
+                            .frame(width: 28)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: PCSpacing.xs) {
+                            Text(item.title)
+                                .font(Font.pc.body)
+                                .foregroundStyle(Color.pc.ink)
+                                .multilineTextAlignment(.leading)
+                            Text(item.subtitle)
+                                .font(Font.pc.secondary)
+                                .foregroundStyle(Color.pc.inkSecondary)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.pc.inkTertiary)
+                            .accessibilityHidden(true)
+                    }
+                    .padding(PCSpacing.cardPadding)
+                    .background(
+                        RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
+                            .fill(Color.pc.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: PCRadius.card, style: .continuous)
+                            .strokeBorder(Color.pc.border, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens \(item.kind == .medication ? "medications" : "appointments")")
+            }
+        }
     }
 
     // MARK: - Empty and loading states
@@ -316,6 +410,45 @@ private struct HomeContentView: View {
         .overlay(
             RoundedRectangle(cornerRadius: PCRadius.input, style: .continuous)
                 .strokeBorder(Color.pc.danger.opacity(0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+    }
+
+    private func undoBannerView(_ banner: HomeViewModel.UndoBanner) -> some View {
+        HStack(alignment: .center, spacing: PCSpacing.md) {
+            Image(systemName: "checkmark.circle")
+                .foregroundStyle(Color.pc.success)
+                .accessibilityHidden(true)
+            Text("\(banner.title) completed")
+                .font(Font.pc.secondary)
+                .foregroundStyle(Color.pc.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: PCSpacing.sm)
+            Button("Undo") {
+                viewModel.undoFromBanner()
+            }
+            .font(Font.pc.secondary.weight(.semibold))
+            .foregroundStyle(Color.pc.primary)
+            .frame(minHeight: PCMetrics.minTouchTarget)
+            .accessibilityLabel("Undo \(banner.title)")
+            Button {
+                viewModel.dismissUndoBanner()
+            } label: {
+                Image(systemName: "xmark")
+                    .frame(width: PCMetrics.minTouchTarget, height: PCMetrics.minTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.pc.inkSecondary)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(PCSpacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: PCRadius.input, style: .continuous)
+                .fill(Color.pc.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: PCRadius.input, style: .continuous)
+                .strokeBorder(Color.pc.border, lineWidth: 1)
         )
         .accessibilityElement(children: .contain)
     }
